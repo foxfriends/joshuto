@@ -5,7 +5,7 @@ pub fn is_executable(mode: u32) -> bool {
 
     LIBC_PERMISSION_VALS
         .iter()
-        .any(|val| mode & (*val as u32) != 0)
+        .any(|val| mode as u32 & *val as u32 != 0)
 }
 
 pub fn stringify_mode(mode: u32) -> String {
