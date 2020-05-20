@@ -11,6 +11,8 @@ mod ui;
 mod util;
 
 use lazy_static::lazy_static;
+use std::fs::File;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process;
 use structopt::StructOpt;
@@ -55,6 +57,8 @@ lazy_static! {
 pub struct Args {
     #[structopt(long = "path", parse(from_os_str))]
     path: Option<PathBuf>,
+    #[structopt(long)]
+    choosefile: Option<PathBuf>,
     #[structopt(short = "v", long = "version")]
     version: bool,
 }
@@ -67,7 +71,7 @@ fn main() {
         println!("{}", version);
         return;
     }
-    if let Some(p) = args.path {
+    if let Some(p) = &args.path {
         match std::env::set_current_dir(p.as_path()) {
             Ok(_) => {}
             Err(e) => {
@@ -80,8 +84,15 @@ fn main() {
     let config = JoshutoConfig::get_config();
     let keymap = JoshutoCommandMapping::get_config();
 
-    match run(config, keymap) {
-        Ok(_) => {}
+    match run(config, keymap, args.choosefile.is_some()) {
+        Ok(final_selection) => {
+            if let Some(path) = args.choosefile {
+                let mut f = File::create(path).unwrap();
+                for file in final_selection {
+                    writeln!(f, "{}", file.display()).unwrap();
+                }
+            }
+        }
         Err(e) => {
             eprintln!("{}", e);
             process::exit(1);

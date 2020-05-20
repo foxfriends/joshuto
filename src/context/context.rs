@@ -10,6 +10,7 @@ use crate::util::event::{Event, Events};
 pub struct JoshutoContext {
     pub exit: bool,
     pub config_t: config::JoshutoConfig,
+    pub choosefile: bool,
     events: Events,
     tab_context: TabContext,
     local_state: Option<LocalStateContext>,
@@ -20,7 +21,7 @@ pub struct JoshutoContext {
 }
 
 impl JoshutoContext {
-    pub fn new(config_t: config::JoshutoConfig) -> Self {
+    pub fn new(config_t: config::JoshutoConfig, choosefile: bool) -> Self {
         Self {
             exit: false,
             events: Events::new(),
@@ -31,6 +32,7 @@ impl JoshutoContext {
             worker_queue: VecDeque::new(),
             worker: None,
             config_t,
+            choosefile,
         }
     }
 

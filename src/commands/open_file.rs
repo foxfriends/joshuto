@@ -48,7 +48,9 @@ pub fn open(context: &mut JoshutoContext, backend: &mut TuiBackend) -> JoshutoRe
             let files: Vec<&std::ffi::OsStr> = paths.iter().filter_map(|e| e.file_name()).collect();
             let options = get_options(paths[0].as_path());
 
-            if !options.is_empty() {
+            if context.choosefile {
+                context.exit = true;
+            } else if !options.is_empty() {
                 if options[0].get_fork() {
                     options[0].execute_with(files.as_slice())?;
                 } else {

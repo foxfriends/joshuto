@@ -9,11 +9,13 @@ pub fn quit(context: &mut JoshutoContext) -> JoshutoResult<()> {
         ))
     } else {
         context.exit = true;
+        context.choosefile = false;
         Ok(())
     }
 }
 
 pub fn force_quit(context: &mut JoshutoContext) -> JoshutoResult<()> {
     context.exit = true;
+    context.choosefile = false;
     Ok(())
 }

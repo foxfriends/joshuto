@@ -7,11 +7,16 @@ use crate::ui::widgets::{TuiCommandMenu, TuiView};
 use crate::util::event::Event;
 use crate::util::load_child::LoadChild;
 use crate::util::worker;
+use std::path::PathBuf;
 
-pub fn run(config_t: JoshutoConfig, keymap_t: JoshutoCommandMapping) -> std::io::Result<()> {
+pub fn run(
+    config_t: JoshutoConfig,
+    keymap_t: JoshutoCommandMapping,
+    choosefile: bool,
+) -> std::io::Result<Vec<PathBuf>> {
     let mut backend: ui::TuiBackend = ui::TuiBackend::new()?;
 
-    let mut context = JoshutoContext::new(config_t);
+    let mut context = JoshutoContext::new(config_t, choosefile);
     let curr_path = std::env::current_dir()?;
     {
         // Initialize an initial tab
@@ -33,7 +38,7 @@ pub fn run(config_t: JoshutoConfig, keymap_t: JoshutoCommandMapping) -> std::io:
 
         let event = match context.poll_event() {
             Ok(event) => event,
-            Err(_) => return Ok(()), // TODO
+            Err(_) => return Ok(vec![]), // TODO
         };
 
         match event {
@@ -76,5 +81,14 @@ pub fn run(config_t: JoshutoConfig, keymap_t: JoshutoCommandMapping) -> std::io:
         backend.render(view);
     }
 
-    Ok(())
+    if !context.choosefile {
+        return Ok(vec![]);
+    }
+
+    let curr_tab = context.tab_context_ref().curr_tab_ref();
+    let paths = match curr_tab.curr_list_ref() {
+        Some(s) => s.get_selected_paths(),
+        None => Vec::new(),
+    };
+    Ok(paths.into_iter().collect())
 }
