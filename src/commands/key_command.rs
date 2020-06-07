@@ -30,6 +30,7 @@ pub enum KeyCommand {
 
     DeleteFiles,
     NewDirectory(path::PathBuf),
+    Touch(path::PathBuf),
     OpenFile,
     OpenFileWith,
     ParentDirectory,
@@ -81,6 +82,7 @@ impl KeyCommand {
 
             Self::DeleteFiles => "cursor_move_delete",
             Self::NewDirectory(_) => "new_directory",
+            Self::Touch(_) => "touch",
             Self::OpenFile => "open",
             Self::OpenFileWith => "open_with",
             Self::ParentDirectory => "cd ..",
@@ -164,6 +166,13 @@ impl KeyCommand {
                     format!("{}: missing additional parameter", command),
                 )),
                 arg => Ok(Self::NewDirectory(path::PathBuf::from(arg))),
+            },
+            "touch" => match arg {
+                "" => Err(JoshutoError::new(
+                    JoshutoErrorKind::IOInvalidData,
+                    format!("{}: missing additional parameter", command),
+                )),
+                arg => Ok(Self::Touch(path::PathBuf::from(arg))),
             },
             "new_tab" => Ok(Self::NewTab),
 
@@ -299,6 +308,7 @@ impl JoshutoRunnable for KeyCommand {
                 Ok(())
             }
             Self::NewDirectory(p) => new_directory::new_directory(context, p.as_path()),
+            Self::Touch(p) => touch::touch(context, p.as_path()),
             Self::OpenFile => open_file::open(context, backend),
             Self::OpenFileWith => open_file::open_with(context, backend),
             Self::ParentDirectory => parent_directory::parent_directory(context),
@@ -313,9 +323,7 @@ impl JoshutoRunnable for KeyCommand {
             Self::SearchNext => search::search_next(context),
             Self::SearchPrev => search::search_prev(context),
 
-            Self::SelectFiles { toggle, all } => {
-                selection::select_files(context, *toggle, *all)
-            }
+            Self::SelectFiles { toggle, all } => selection::select_files(context, *toggle, *all),
             Self::SetMode => set_mode::set_mode(context, backend),
             Self::ShellCommand(v) => shell::shell(context, backend, v.as_slice()),
 

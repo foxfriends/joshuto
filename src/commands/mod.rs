@@ -17,6 +17,7 @@ pub mod shell;
 pub mod show_hidden;
 pub mod sort;
 pub mod tab_ops;
+pub mod touch;
 
 pub mod command_keybind;
 pub mod key_command;
