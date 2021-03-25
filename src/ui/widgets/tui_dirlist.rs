@@ -4,7 +4,9 @@ use tui::style::{Color, Modifier, Style};
 use tui::widgets::Widget;
 use unicode_width::UnicodeWidthStr;
 
-use crate::fs::JoshutoDirList;
+use crate::fs::{FileType, JoshutoDirEntry, JoshutoDirList};
+
+const ELLIPSIS: &str = "…";
 
 pub struct TuiDirList<'a> {
     dirlist: &'a JoshutoDirList,
@@ -24,12 +26,10 @@ impl<'a> Widget for TuiDirList<'a> {
         if area.width < 4 {
             return;
         }
-
         let x = area.left();
         let y = area.top();
 
-        let dir_len = self.dirlist.contents.len();
-        if dir_len == 0 {
+        if self.dirlist.contents.len() == 0 {
             let style = Style::default().bg(Color::Red).fg(Color::White);
             buf.set_stringn(x, y, "empty", area.width as usize, style);
             return;
@@ -38,13 +38,7 @@ impl<'a> Widget for TuiDirList<'a> {
         let curr_index = self.dirlist.index.unwrap();
         let skip_dist = curr_index / area.height as usize * area.height as usize;
 
-        let screen_index = if skip_dist > 0 {
-            curr_index % skip_dist
-        } else {
-            curr_index
-        };
-
-        let area_width = area.width as usize - 1;
+        let drawing_width = area.width as usize;
         for (i, entry) in self
             .dirlist
             .iter()
@@ -52,47 +46,85 @@ impl<'a> Widget for TuiDirList<'a> {
             .enumerate()
             .take(area.height as usize)
         {
-            let name = entry.file_name();
-            let name_width = name.width();
+            let style = entry.get_style();
+            print_entry(buf, entry, style, (x + 1, y + i as u16), drawing_width - 1);
+        }
+        {
+            let screen_index = curr_index % area.height as usize;
 
-            let style = if i == screen_index {
-                entry.get_style().add_modifier(Modifier::REVERSED)
-            } else {
-                entry.get_style()
+            let entry = self.dirlist.curr_entry_ref().unwrap();
+            let style = {
+                let s = entry.get_style().add_modifier(Modifier::REVERSED);
+                let space_fill = " ".repeat(drawing_width);
+                buf.set_string(x, y + screen_index as u16, space_fill.as_str(), s);
+                s
             };
+            print_entry(
+                buf,
+                entry,
+                style,
+                (x + 1, y + screen_index as u16),
+                drawing_width - 1,
+            );
+        }
+    }
+}
 
-            let file_type = &entry.metadata.file_type;
-            if file_type.is_dir() {
-                if name_width <= area_width {
-                    buf.set_stringn(x, y + i as u16, name, area_width, style);
-                } else {
-                    buf.set_stringn(x, y + i as u16, name, area_width - 1, style);
-                    buf.set_string(x + area_width as u16 - 1, y + i as u16, "…", style);
+fn print_entry(
+    buf: &mut Buffer,
+    entry: &JoshutoDirEntry,
+    style: Style,
+    (x, y): (u16, u16),
+    drawing_width: usize,
+) {
+    let name = entry.label();
+    let name_width = name.width();
+
+    match entry.metadata.file_type() {
+        FileType::Directory => {
+            // print filename
+            buf.set_stringn(x, y, name, drawing_width, style);
+            if name_width > drawing_width {
+                buf.set_string(x + drawing_width as u16 - 1, y, ELLIPSIS, style);
+            }
+        }
+        _ => {
+            let file_drawing_width = drawing_width;
+            let (stem, extension) = match name.rfind('.') {
+                None => (name, ""),
+                Some(i) => name.split_at(i),
+            };
+            if stem.is_empty() {
+                let ext_width = extension.width();
+                buf.set_stringn(x, y, extension, file_drawing_width, style);
+                if ext_width > drawing_width {
+                    buf.set_string(x + drawing_width as u16 - 1, y, ELLIPSIS, style);
                 }
-            } else if name_width < area_width {
-                buf.set_stringn(x, y + i as u16, name, area_width, style);
+            } else if extension.is_empty() {
+                let stem_width = stem.width();
+                buf.set_stringn(x, y, stem, file_drawing_width, style);
+                if stem_width > file_drawing_width {
+                    buf.set_string(x + file_drawing_width as u16 - 1, y, ELLIPSIS, style);
+                }
             } else {
-                match name.rfind('.') {
-                    None => {
-                        buf.set_stringn(x, y + i as u16, name, area_width, style);
-                    }
-                    Some(0) => {
-                        let file_name_width = area_width;
-                        buf.set_stringn(x, y + i as u16, &name, file_name_width, style);
-                    }
-                    Some(p_ind) => {
-                        let ext_width = name[p_ind..].width();
-                        let file_name_width = area_width - ext_width - 1;
-
-                        buf.set_stringn(x, y + i as u16, &name[..p_ind], file_name_width, style);
-                        buf.set_string(x + file_name_width as u16, y + i as u16, "…", style);
-                        buf.set_string(
-                            x + file_name_width as u16 + 1,
-                            y + i as u16,
-                            &name[p_ind..],
-                            style,
-                        );
-                    }
+                let stem_width = stem.width();
+                let ext_width = extension.width();
+                buf.set_stringn(x, y, stem, file_drawing_width, style);
+                if stem_width + ext_width > file_drawing_width {
+                    let ext_start_idx = if file_drawing_width < ext_width {
+                        0
+                    } else {
+                        (file_drawing_width - ext_width) as u16
+                    };
+                    buf.set_string(x + ext_start_idx, y, extension, style);
+                    let ext_start_idx = if ext_start_idx > 0 {
+                        ext_start_idx - 1
+                    } else {
+                        0
+                    };
+                    buf.set_string(x + ext_start_idx, y, ELLIPSIS, style);
+                } else {
+                    buf.set_string(x + stem_width as u16, y, extension, style);
                 }
             }
         }

@@ -8,15 +8,15 @@ pub fn is_executable(mode: u32) -> bool {
         .any(|val| mode as u32 & *val as u32 != 0)
 }
 
-pub fn stringify_mode(mode: u32) -> String {
+pub fn mode_to_string(mode: u32) -> String {
     const LIBC_FILE_VALS: [(libc::mode_t, char); 7] = [
-        (libc::S_IFREG, '-'),
-        (libc::S_IFDIR, 'd'),
-        (libc::S_IFLNK, 'l'),
-        (libc::S_IFSOCK, 's'),
-        (libc::S_IFBLK, 'b'),
-        (libc::S_IFCHR, 'c'),
-        (libc::S_IFIFO, 'f'),
+        (libc::S_IFREG >> 9, '-'),
+        (libc::S_IFDIR >> 9, 'd'),
+        (libc::S_IFLNK >> 9, 'l'),
+        (libc::S_IFSOCK >> 9, 's'),
+        (libc::S_IFBLK >> 9, 'b'),
+        (libc::S_IFCHR >> 9, 'c'),
+        (libc::S_IFIFO >> 9, 'f'),
     ];
 
     const LIBC_PERMISSION_VALS: [(libc::mode_t, char); 9] = [
@@ -30,13 +30,12 @@ pub fn stringify_mode(mode: u32) -> String {
         (libc::S_IWOTH, 'w'),
         (libc::S_IXOTH, 'x'),
     ];
-    let mut mode_str: String = String::with_capacity(10);
 
+    let mut mode_str: String = String::with_capacity(10);
     let mode_shifted = mode >> 9;
 
     for (val, ch) in LIBC_FILE_VALS.iter() {
-        let val: u32 = (*val >> 9) as u32;
-        if mode_shifted & val == mode_shifted {
+        if mode_shifted == (*val).into() {
             mode_str.push(*ch);
             break;
         }

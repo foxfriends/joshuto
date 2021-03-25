@@ -1,111 +1,7 @@
-use std::iter::Iterator;
-
-use termion::event::Key;
 use tui::buffer::Buffer;
 use tui::layout::Rect;
 use tui::style::{Color, Style};
-use tui::widgets::{Block, Borders, Clear, Widget};
-use unicode_width::UnicodeWidthStr;
-
-use super::TuiView;
-use crate::commands::{CommandKeybind, KeyCommand};
-use crate::config::JoshutoCommandMapping;
-use crate::context::JoshutoContext;
-use crate::ui::TuiBackend;
-use crate::util::event::Event;
-use crate::util::worker;
-
-const BORDER_HEIGHT: usize = 1;
-const BOTTOM_MARGIN: usize = 1;
-
-pub struct TuiCommandMenu;
-
-impl TuiCommandMenu {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    pub fn get_input<'a>(
-        &mut self,
-        backend: &mut TuiBackend,
-        context: &mut JoshutoContext,
-        m: &'a JoshutoCommandMapping,
-    ) -> Option<&'a KeyCommand> {
-        let mut map: &JoshutoCommandMapping = &m;
-        let terminal = backend.terminal_mut();
-        context.flush_event();
-
-        loop {
-            terminal.draw(|frame| {
-                let f_size: Rect = frame.size();
-
-                {
-                    let view = TuiView::new(&context);
-                    frame.render_widget(view, f_size);
-                }
-
-                {
-                    // draw menu
-                    let mut display_vec: Vec<String> = map
-                        .as_ref()
-                        .iter()
-                        .map(|(k, v)| format!("  {:?}    {}", k, v))
-                        .collect();
-                    display_vec.sort();
-                    let display_str: Vec<&str> = display_vec.iter().map(|v| v.as_str()).collect();
-
-                    let display_str_len = display_str.len();
-
-                    let y = if (f_size.height as usize)
-                        < display_str_len + BORDER_HEIGHT + BOTTOM_MARGIN
-                    {
-                        0
-                    } else {
-                        f_size.height
-                            - (BORDER_HEIGHT + BOTTOM_MARGIN) as u16
-                            - display_str_len as u16
-                    };
-
-                    let menu_rect = Rect {
-                        x: 0,
-                        y,
-                        width: f_size.width,
-                        height: (display_str_len + BORDER_HEIGHT) as u16,
-                    };
-
-                    frame.render_widget(Clear, menu_rect);
-                    frame.render_widget(TuiMenu::new(&display_str), menu_rect);
-                }
-            });
-
-            if let Ok(event) = context.poll_event() {
-                match event {
-                    Event::IOWorkerProgress(res) => {
-                        worker::process_worker_progress(context, res);
-                    }
-                    Event::IOWorkerResult(res) => {
-                        worker::process_finished_worker(context, res);
-                    }
-                    Event::Input(key) => {
-                        match key {
-                            Key::Esc => return None,
-                            key => match map.as_ref().get(&key) {
-                                Some(CommandKeybind::SimpleKeybind(s)) => {
-                                    return Some(s);
-                                }
-                                Some(CommandKeybind::CompositeKeybind(m)) => {
-                                    map = m;
-                                }
-                                None => return None,
-                            },
-                        }
-                        context.flush_event();
-                    }
-                }
-            }
-        }
-    }
-}
+use tui::widgets::{Block, Borders, Widget};
 
 pub struct TuiMenu<'a> {
     options: &'a [&'a str],
@@ -134,8 +30,7 @@ impl<'a> Widget for TuiMenu<'a> {
             .render(area, buf);
 
         for (i, text) in text_iter.enumerate() {
-            let width = text.width();
-            buf.set_stringn(area_x, area_y + i as u16, text, width, style);
+            buf.set_string(area_x, area_y + i as u16, text, style);
         }
     }
 }

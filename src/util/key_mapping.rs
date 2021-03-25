@@ -1,4 +1,14 @@
-use termion::event::Key;
+use termion::event::{Event, Key, MouseButton, MouseEvent};
+
+pub fn str_to_event(s: &str) -> Option<Event> {
+    if let Some(k) = str_to_key(s) {
+        Some(Event::Key(k))
+    } else if let Some(m) = str_to_mouse(s) {
+        Some(Event::Mouse(m))
+    } else {
+        None
+    }
+}
 
 pub fn str_to_key(s: &str) -> Option<Key> {
     if s.is_empty() {
@@ -61,4 +71,12 @@ pub fn str_to_key(s: &str) -> Option<Key> {
         return key;
     }
     None
+}
+
+pub fn str_to_mouse(s: &str) -> Option<MouseEvent> {
+    match s {
+        "scroll_up" => Some(MouseEvent::Press(MouseButton::WheelUp, 0, 0)),
+        "scroll_down" => Some(MouseEvent::Press(MouseButton::WheelDown, 0, 0)),
+        _ => None,
+    }
 }

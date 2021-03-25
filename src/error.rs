@@ -27,6 +27,8 @@ pub enum JoshutoErrorKind {
     EnvVarNotPresent,
 
     ParseError,
+    ClipboardError,
+
     UnknownCommand,
 }
 

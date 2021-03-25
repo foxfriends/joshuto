@@ -1,6 +1,6 @@
 use crate::context::JoshutoContext;
 use crate::error::JoshutoResult;
-use crate::ui::widgets::TuiTextField;
+use crate::ui::views::TuiTextField;
 use crate::ui::TuiBackend;
 use crate::util::unix;
 
@@ -44,8 +44,8 @@ pub fn set_mode(context: &mut JoshutoContext, backend: &mut TuiBackend) -> Joshu
 
     let user_input = match entry {
         Some(entry) => {
-            let mode = entry.metadata.permissions.mode();
-            let mode_string = unix::stringify_mode(mode);
+            let mode = entry.metadata.permissions_ref().mode();
+            let mode_string = unix::mode_to_string(mode);
             TuiTextField::default()
                 .prompt(":")
                 .prefix(PREFIX)
@@ -56,8 +56,8 @@ pub fn set_mode(context: &mut JoshutoContext, backend: &mut TuiBackend) -> Joshu
     };
 
     if let Some(s) = user_input {
-        if s.starts_with(PREFIX) {
-            let s = &s[PREFIX.len()..];
+        if let Some(stripped) = s.strip_prefix(PREFIX) {
+            let s = stripped;
             let mode = str_to_mode(s);
 
             let entry = context
@@ -68,7 +68,7 @@ pub fn set_mode(context: &mut JoshutoContext, backend: &mut TuiBackend) -> Joshu
                 .unwrap();
 
             unix::set_mode(entry.file_path(), mode);
-            entry.metadata.permissions.set_mode(mode);
+            entry.metadata.permissions_mut().set_mode(mode);
             cursor_move::down(context, 1)?;
         }
     }

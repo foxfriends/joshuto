@@ -1,6 +1,6 @@
 [package]
 name = "joshuto"
-version = "0.8.4"
+version = "0.8.6"
 authors = ["Jiayi Zhao <jeff.no.zhao@gmail.com>"]
 description = "Terminal file manager inspired by ranger"
 homepage = "https://github.com/kamiyaa/joshuto"
@@ -10,16 +10,17 @@ edition = "2018"
 [dependencies]
 alphanumeric-sort = "^1"
 chrono = "^0"
-dirs = "^1"
+dirs-next = "^2"
 lazy_static = "^1"
 libc = "^0"
-# notify = "^4"
 open = "^1"
 rand = "^0"
 rustyline = "^4"
 serde = "^1"
 serde_derive = "^1"
 shell-words = "^1"
+shellexpand = "^2"
+signal-hook = "^0"
 structopt = "^0"
 termion = "^1"
 toml = "^0"
@@ -28,16 +29,8 @@ unicode-width = "^0"
 users = "^0"
 whoami = "^0"
 xdg = "^2"
-
-# fs_extra = "*"
-# lazy_static = "*"
-# libc = "*"
-# serde = "*"
-# serde_derive = "*"
-# toml = "*"
-# wcwidth = "*"
-# whoami = "*"
-# xdg = "*"
+phf = { version = "^0", features = ["macros"], optional = true }
+trash = { version = "^1", optional = true }
 
 # [dependencies.wordexp]
 # version = "^0"
@@ -46,5 +39,8 @@ xdg = "^2"
 # path = "lib/wordexp-rs"
 
 [features]
+devicons = [ "phf" ]
 file_mimetype = []
-default = []
+mouse = []
+recycle_bin = [ "trash" ]
+default = [ "devicons", "recycle_bin" ]

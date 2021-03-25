@@ -2,16 +2,22 @@ use std::io;
 use std::sync::mpsc;
 use std::thread;
 
-use termion::event::Key;
+use signal_hook::consts::signal;
+use signal_hook::iterator::exfiltrator::SignalOnly;
+use signal_hook::iterator::SignalsInfo;
+
+use termion::event::Event;
 use termion::input::TermRead;
 
 use crate::io::IOWorkerProgress;
 
 #[derive(Debug)]
-pub enum Event {
-    Input(Key),
+pub enum JoshutoEvent {
+    Termion(Event),
     IOWorkerProgress(IOWorkerProgress),
     IOWorkerResult(io::Result<IOWorkerProgress>),
+    Signal(i32),
+    //    Filesystem(notify::Result),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -26,10 +32,9 @@ impl Default for Config {
 /// A small event handler that wrap termion input and tick events. Each event
 /// type is handled in its own thread and returned to a common `Receiver`
 pub struct Events {
-    pub event_tx: mpsc::Sender<Event>,
-    event_rx: mpsc::Receiver<Event>,
+    pub event_tx: mpsc::Sender<JoshutoEvent>,
+    event_rx: mpsc::Receiver<JoshutoEvent>,
     pub input_tx: mpsc::SyncSender<()>,
-    // fileio_handle: thread::JoinHandle<()>,
 }
 
 impl Events {
@@ -41,36 +46,48 @@ impl Events {
         let (input_tx, input_rx) = mpsc::sync_channel(1);
         let (event_tx, event_rx) = mpsc::channel();
 
-        {
-            let event_tx = event_tx.clone();
-            thread::spawn(move || {
-                let stdin = io::stdin();
-                let mut keys = stdin.keys();
-                match keys.next() {
-                    Some(key) => match key {
-                        Ok(key) => {
-                            if let Err(e) = event_tx.send(Event::Input(key)) {
-                                eprintln!("Input thread send err: {:#?}", e);
-                                return;
-                            }
-                        }
-                        _ => return,
-                    },
-                    _ => return,
+        // signal thread
+        let event_tx2 = event_tx.clone();
+        let _ = thread::spawn(move || {
+            let sigs = vec![signal::SIGWINCH];
+            let mut signals = SignalsInfo::<SignalOnly>::new(&sigs).unwrap();
+            for signal in &mut signals {
+                if let Err(e) = event_tx2.send(JoshutoEvent::Signal(signal)) {
+                    eprintln!("Signal thread send err: {:#?}", e);
+                    return;
                 }
+            }
+        });
 
-                while let Ok(_) = input_rx.recv() {
-                    if let Some(key) = keys.next() {
-                        if let Ok(key) = key {
-                            if let Err(e) = event_tx.send(Event::Input(key)) {
-                                eprintln!("Input thread send err: {:#?}", e);
-                                return;
-                            }
+        // input thread
+        let event_tx2 = event_tx.clone();
+        let _ = thread::spawn(move || {
+            let stdin = io::stdin();
+            let mut events = stdin.events();
+            match events.next() {
+                Some(event) => match event {
+                    Ok(event) => {
+                        if let Err(e) = event_tx2.send(JoshutoEvent::Termion(event)) {
+                            eprintln!("Input thread send err: {:#?}", e);
+                            return;
+                        }
+                    }
+                    Err(_) => return,
+                },
+                None => return,
+            }
+
+            while input_rx.recv().is_ok() {
+                if let Some(event) = events.next() {
+                    if let Ok(event) = event {
+                        if let Err(e) = event_tx2.send(JoshutoEvent::Termion(event)) {
+                            eprintln!("Input thread send err: {:#?}", e);
+                            return;
                         }
                     }
                 }
-            })
-        };
+            }
+        });
 
         Events {
             event_tx,
@@ -79,7 +96,7 @@ impl Events {
         }
     }
 
-    pub fn next(&self) -> Result<Event, mpsc::RecvError> {
+    pub fn next(&self) -> Result<JoshutoEvent, mpsc::RecvError> {
         let event = self.event_rx.recv()?;
         Ok(event)
     }

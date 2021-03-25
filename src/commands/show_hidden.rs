@@ -1,13 +1,12 @@
 use crate::context::JoshutoContext;
 use crate::error::JoshutoResult;
 use crate::history::DirectoryHistory;
-use crate::ui::TuiBackend;
 
 use super::reload;
 
 pub fn _toggle_hidden(context: &mut JoshutoContext) {
-    let opposite = !context.config_t.sort_option.show_hidden;
-    context.config_t.sort_option.show_hidden = opposite;
+    let opposite = !context.config_ref().sort_option.show_hidden;
+    context.config_mut().sort_option.show_hidden = opposite;
 
     for tab in context.tab_context_mut().iter_mut() {
         tab.history_mut().depreciate_all_entries();

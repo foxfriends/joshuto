@@ -4,10 +4,12 @@ use tui::style::{Color, Modifier, Style};
 use tui::widgets::Widget;
 use unicode_width::UnicodeWidthStr;
 
-use crate::fs::JoshutoDirList;
+use crate::fs::{FileType, JoshutoDirEntry, JoshutoDirList};
 use crate::util::format;
 
 const FILE_SIZE_WIDTH: usize = 8;
+
+const ELLIPSIS: &str = "…";
 
 pub struct TuiDirListDetailed<'a> {
     dirlist: &'a JoshutoDirList,
@@ -27,7 +29,6 @@ impl<'a> Widget for TuiDirListDetailed<'a> {
 
         let x = area.left();
         let y = area.top();
-
         let curr_index = match self.dirlist.index {
             Some(i) => i,
             None => {
@@ -37,15 +38,8 @@ impl<'a> Widget for TuiDirListDetailed<'a> {
             }
         };
 
+        let drawing_width = area.width as usize;
         let skip_dist = curr_index / area.height as usize * area.height as usize;
-
-        let screen_index = if skip_dist > 0 {
-            curr_index % skip_dist
-        } else {
-            curr_index
-        };
-
-        let area_width = area.width as usize;
         for (i, entry) in self
             .dirlist
             .iter()
@@ -53,68 +47,108 @@ impl<'a> Widget for TuiDirListDetailed<'a> {
             .enumerate()
             .take(area.height as usize)
         {
-            let name = entry.file_name();
-            let name_width = name.width();
+            let style = entry.get_style();
+            print_entry(buf, entry, style, (x + 1, y + i as u16), drawing_width - 1);
+        }
+        {
+            let screen_index = curr_index % area.height as usize;
 
-            let style = if i == screen_index {
-                entry.get_style().add_modifier(Modifier::REVERSED)
-            } else {
-                entry.get_style()
+            let entry = self.dirlist.curr_entry_ref().unwrap();
+            let style = {
+                let s = entry.get_style().add_modifier(Modifier::REVERSED);
+                let space_fill = " ".repeat(drawing_width);
+                buf.set_string(x, y + screen_index as u16, space_fill.as_str(), s);
+                s
             };
+            print_entry(
+                buf,
+                entry,
+                style,
+                (x + 1, y + screen_index as u16),
+                drawing_width - 1,
+            );
+        }
+    }
+}
 
-            let file_type = &entry.metadata.file_type;
-            if file_type.is_dir() {
-                if name_width <= area_width {
-                    buf.set_stringn(x, y + i as u16, name, area_width, style);
-                } else {
-                    buf.set_stringn(x, y + i as u16, name, area_width - 1, style);
-                    buf.set_string(x + area_width as u16 - 1, y + i as u16, "…", style);
-                }
-            // TODO: print out symlink path
-            //            } else if file_type.is_symlink() {
-            } else {
-                if name_width < area_width - FILE_SIZE_WIDTH {
-                    buf.set_stringn(x, y + i as u16, name, area_width - FILE_SIZE_WIDTH, style);
-                } else {
-                    match name.rfind('.') {
-                        None => {
-                            buf.set_stringn(
-                                x,
-                                y + i as u16,
-                                name,
-                                area_width - FILE_SIZE_WIDTH,
-                                style,
-                            );
-                        }
-                        Some(p_ind) => {
-                            let ext_width = name[p_ind..].width();
-                            let file_name_width = area_width - FILE_SIZE_WIDTH - ext_width - 2;
+fn print_entry(
+    buf: &mut Buffer,
+    entry: &JoshutoDirEntry,
+    style: Style,
+    (x, y): (u16, u16),
+    drawing_width: usize,
+) {
+    let name = entry.label();
+    let name_width = name.width();
 
-                            buf.set_stringn(
-                                x,
-                                y + i as u16,
-                                &name[..p_ind],
-                                file_name_width,
-                                style,
-                            );
-                            buf.set_string(x + file_name_width as u16, y + i as u16, "…", style);
-                            buf.set_string(
-                                x + file_name_width as u16 + 1,
-                                y + i as u16,
-                                &name[p_ind..],
-                                style,
-                            );
-                        }
-                    }
-                }
-                let file_size_string = format::file_size_to_string(entry.metadata.len);
-                buf.set_string(
-                    x + (area_width - FILE_SIZE_WIDTH) as u16,
-                    y + i as u16,
-                    file_size_string,
-                    style,
-                );
+    match entry.metadata.file_type() {
+        FileType::Directory => {
+            // print filename
+            buf.set_stringn(x, y, name, drawing_width, style);
+            if name_width > drawing_width {
+                buf.set_string(x + drawing_width as u16 - 1, y, ELLIPSIS, style);
             }
+        }
+        FileType::Symlink(_) => {
+            // print filename
+            buf.set_stringn(x, y, name, drawing_width, style);
+            buf.set_string(x + drawing_width as u16 - 4, y, "->", style);
+            if name_width >= drawing_width - 4 {
+                buf.set_string(x + drawing_width as u16 - 1, y, ELLIPSIS, style);
+            }
+        }
+        FileType::File => {
+            if drawing_width < FILE_SIZE_WIDTH {
+                return;
+            }
+            let file_drawing_width = drawing_width - FILE_SIZE_WIDTH;
+
+            let (stem, extension) = match name.rfind('.') {
+                None => (name, ""),
+                Some(i) => name.split_at(i),
+            };
+            if stem.is_empty() {
+                let ext_width = extension.width();
+                buf.set_stringn(x, y, extension, file_drawing_width, style);
+                if ext_width > drawing_width {
+                    buf.set_string(x + drawing_width as u16 - 1, y, ELLIPSIS, style);
+                }
+            } else if extension.is_empty() {
+                let stem_width = stem.width();
+                buf.set_stringn(x, y, stem, file_drawing_width, style);
+                if stem_width > file_drawing_width {
+                    buf.set_string(x + drawing_width as u16 - 1, y, ELLIPSIS, style);
+                }
+            } else {
+                let stem_width = stem.width();
+                let ext_width = extension.width();
+                buf.set_stringn(x, y, stem, file_drawing_width, style);
+                if stem_width + ext_width > file_drawing_width {
+                    let ext_start_idx = if file_drawing_width < ext_width {
+                        0
+                    } else {
+                        (file_drawing_width - ext_width) as u16
+                    };
+                    buf.set_string(x + ext_start_idx, y, extension, style);
+                    let ext_start_idx = if ext_start_idx > 0 {
+                        ext_start_idx - 1
+                    } else {
+                        0
+                    };
+                    buf.set_string(x + ext_start_idx, y, ELLIPSIS, style);
+                } else {
+                    buf.set_string(x + stem_width as u16, y, extension, style);
+                }
+            }
+            // print file size
+            let file_size_string = format::file_size_to_string(entry.metadata.len());
+            buf.set_string(x + file_drawing_width as u16, y, " ", style);
+            buf.set_string(
+                x + file_drawing_width as u16 + 1,
+                y,
+                file_size_string,
+                style,
+            );
         }
     }
 }

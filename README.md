@@ -8,8 +8,9 @@
 
 ## Dependencies
 
-- [cargo](https://github.com/rust-lang/cargo/) >= 0.41.0
-- [rustc](https://www.rust-lang.org/) >= 1.41.0
+- [cargo](https://github.com/rust-lang/cargo/)
+- [rustc](https://www.rust-lang.org/)
+- xsel/xclip/wl-clipboard (optional, for clipboard support)
 
 Also see [Cargo.toml](https://github.com/kamiyaa/joshuto/blob/master/Cargo.toml)
 
@@ -33,6 +34,15 @@ Also see [Cargo.toml](https://github.com/kamiyaa/joshuto/blob/master/Cargo.toml)
 ~# cargo install --path=. --force --root=/usr/local     # /usr also works
 ```
 
+#### Packaging status
+
+##### Fedora ([COPR](https://copr.fedorainfracloud.org/coprs/atim/joshuto/))
+
+```
+sudo dnf copr enable atim/joshuto -y
+sudo dnf install joshuto
+```
+
 ## Usage
 
 ```
@@ -51,8 +61,8 @@ Joshuto can currently be configured using the following files:
 
 #### [keymap.toml](https://github.com/kamiyaa/joshuto/blob/master/config/keymap.toml)
 
-- for keybindings, please take a look at [keymap.rs](https://github.com/kamiyaa/joshuto/blob/master/src/config/keymap.rs#L102) for non-printable keys
-- for commands, please take a look at commands/[mod.rs](https://github.com/kamiyaa/joshuto/blob/master/src/commands/mod.rs#L73) for available commands
+- for keybindings, please take a look at [src/util/key_mapping.rs](https://github.com/kamiyaa/joshuto/blob/master/src/util/key_mapping.rs#L18) for non-printable keys
+- for commands, please take a look at [src/commands/key_command.rs](https://github.com/kamiyaa/joshuto/blob/master/src/commands/key_command.rs#L132)
 
 #### [mimetype.toml](https://github.com/kamiyaa/joshuto/blob/master/config/mimetype.toml)
 

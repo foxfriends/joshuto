@@ -1,3 +1,5 @@
+use std::process::Command;
+
 use crate::context::{JoshutoContext, LocalStateContext};
 use crate::error::{JoshutoError, JoshutoErrorKind, JoshutoResult};
 use crate::io::FileOp;
@@ -34,9 +36,7 @@ pub fn paste(context: &mut JoshutoContext, options: IOWorkerOptions) -> JoshutoR
     match context.take_local_state() {
         Some(state) if !state.paths.is_empty() => {
             let dest = context.tab_context_ref().curr_tab_ref().pwd().to_path_buf();
-            let mut options = options;
-            options.kind = state.file_op;
-            let worker_thread = IOWorkerThread::new(options, state.paths, dest);
+            let worker_thread = IOWorkerThread::new(state.file_op, state.paths, dest, options);
             context.add_worker(worker_thread);
             Ok(())
         }
@@ -45,4 +45,48 @@ pub fn paste(context: &mut JoshutoContext, options: IOWorkerOptions) -> JoshutoR
             "no files selected".to_string(),
         )),
     }
+}
+
+pub fn copy_filename(context: &mut JoshutoContext) -> JoshutoResult<()> {
+    let entry_file_name = match context
+        .tab_context_ref()
+        .curr_tab_ref()
+        .curr_list_ref()
+        .and_then(|c| c.curr_entry_ref())
+    {
+        Some(entry) => Some(entry.file_name().to_string()),
+        None => None,
+    };
+    if let Some(file_name) = entry_file_name {
+        let clipboards = [
+            (
+                "wl-copy",
+                format!("printf '%s' {} | {} 2> /dev/null", file_name, "wl-copy"),
+            ),
+            (
+                "xsel",
+                format!("printf '%s' {} | {} -ib 2> /dev/null", file_name, "xsel"),
+            ),
+            (
+                "xclip",
+                format!(
+                    "printf '%s' {} | {} -selection clipboard 2> /dev/null",
+                    file_name, "xclip"
+                ),
+            ),
+        ];
+
+        for (_, command) in clipboards.iter() {
+            match Command::new("sh").args(&["-c", command.as_str()]).status() {
+                Ok(s) if s.success() => return Ok(()),
+                _ => {}
+            }
+        }
+        let err = Err(JoshutoError::new(
+            JoshutoErrorKind::ClipboardError,
+            "Failed to copy to clipboard".to_string(),
+        ));
+        return err;
+    }
+    Ok(())
 }

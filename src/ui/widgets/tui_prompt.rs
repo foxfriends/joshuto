@@ -1,15 +1,14 @@
-use termion::event::Key;
+use termion::event::{Event, Key};
 use tui::layout::Rect;
 use tui::style::{Color, Style};
 use tui::text::Span;
 use tui::widgets::{Clear, Paragraph, Wrap};
 
 use crate::context::JoshutoContext;
+use crate::ui::views::TuiView;
 use crate::ui::TuiBackend;
-use crate::util::event::Event;
-use crate::util::worker;
-
-use super::TuiView;
+use crate::util::event::JoshutoEvent;
+use crate::util::input;
 
 pub struct TuiPrompt<'a> {
     prompt: &'a str,
@@ -25,7 +24,7 @@ impl<'a> TuiPrompt<'a> {
 
         context.flush_event();
         loop {
-            terminal.draw(|frame| {
+            let _ = terminal.draw(|frame| {
                 let f_size: Rect = frame.size();
                 if f_size.height == 0 {
                     return;
@@ -57,15 +56,13 @@ impl<'a> TuiPrompt<'a> {
 
             if let Ok(event) = context.poll_event() {
                 match event {
-                    Event::IOWorkerProgress(res) => {
-                        worker::process_worker_progress(context, res);
-                    }
-                    Event::IOWorkerResult(res) => {
-                        worker::process_finished_worker(context, res);
-                    }
-                    Event::Input(key) => {
+                    JoshutoEvent::Termion(Event::Key(key)) => {
                         return key;
                     }
+                    JoshutoEvent::Termion(_) => {
+                        context.flush_event();
+                    }
+                    event => input::process_noninteractive(event, context),
                 };
             }
         }

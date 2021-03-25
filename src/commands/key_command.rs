@@ -8,6 +8,8 @@ use crate::util::load_child::LoadChild;
 use crate::util::sort::SortType;
 
 use crate::HOME_DIR;
+use dirs_next::home_dir;
+use shellexpand::tilde_with_context;
 
 use super::*;
 
@@ -20,6 +22,7 @@ pub enum KeyCommand {
     CutFiles,
     CopyFiles,
     PasteFiles(IOWorkerOptions),
+    CopyFileName,
 
     CursorMoveUp(usize),
     CursorMoveDown(usize),
@@ -28,6 +31,11 @@ pub enum KeyCommand {
     CursorMovePageUp,
     CursorMovePageDown,
 
+    ParentCursorMoveUp(usize),
+    ParentCursorMoveDown(usize),
+
+    // ChildCursorMoveUp(usize),
+    // ChildCursorMoveDown(usize),
     DeleteFiles,
     NewDirectory(path::PathBuf),
     Touch(path::PathBuf),
@@ -49,6 +57,7 @@ pub enum KeyCommand {
     SelectFiles { toggle: bool, all: bool },
     SetMode,
     ShellCommand(Vec<String>),
+    ShowWorkers,
 
     ToggleHiddenFiles,
 
@@ -64,7 +73,7 @@ impl KeyCommand {
     pub fn command(&self) -> &'static str {
         match self {
             Self::BulkRename => "bulk_rename",
-            Self::ChangeDirectory(_) => "change_directory",
+            Self::ChangeDirectory(_) => "cd",
             Self::NewTab => "new_tab",
             Self::CloseTab => "close_tab",
             Self::CommandLine(_, _) => "console",
@@ -72,6 +81,7 @@ impl KeyCommand {
             Self::CutFiles => "cut_files",
             Self::CopyFiles => "copy_files",
             Self::PasteFiles(_) => "paste_files",
+            Self::CopyFileName => "copy_filename",
 
             Self::CursorMoveUp(_) => "cursor_move_up",
             Self::CursorMoveDown(_) => "cursor_move_down",
@@ -80,7 +90,10 @@ impl KeyCommand {
             Self::CursorMovePageUp => "cursor_move_page_up",
             Self::CursorMovePageDown => "cursor_move_page_down",
 
-            Self::DeleteFiles => "cursor_move_delete",
+            Self::ParentCursorMoveUp(_) => "parent_cursor_move_up",
+            Self::ParentCursorMoveDown(_) => "parent_cursor_move_down",
+
+            Self::DeleteFiles => "delete_files",
             Self::NewDirectory(_) => "new_directory",
             Self::Touch(_) => "touch",
             Self::OpenFile => "open",
@@ -101,11 +114,12 @@ impl KeyCommand {
             Self::SelectFiles { toggle: _, all: _ } => "select",
             Self::SetMode => "set_mode",
             Self::ShellCommand(_) => "shell",
+            Self::ShowWorkers => "show_workers",
 
             Self::ToggleHiddenFiles => "toggle_hidden",
 
             Self::Sort(_) => "sort",
-            Self::SortReverse => "sort_reverse",
+            Self::SortReverse => "sort reverse",
 
             Self::TabSwitch(_) => "tab_switch",
         }
@@ -128,10 +142,14 @@ impl KeyCommand {
                     )),
                 },
                 ".." => Ok(Self::ParentDirectory),
-                arg => Ok(Self::ChangeDirectory(path::PathBuf::from(arg))),
+                arg => Ok({
+                    let path_accepts_tilde = tilde_with_context(arg, home_dir);
+                    Self::ChangeDirectory(path::PathBuf::from(path_accepts_tilde.as_ref()))
+                }),
             },
             "close_tab" => Ok(Self::CloseTab),
             "copy_files" => Ok(Self::CopyFiles),
+            "copy_filename" => Ok(Self::CopyFileName),
             "console" => Ok(Self::CommandLine(arg.to_owned(), "".to_owned())),
             "cursor_move_home" => Ok(Self::CursorMoveHome),
             "cursor_move_end" => Ok(Self::CursorMoveEnd),
@@ -151,6 +169,26 @@ impl KeyCommand {
                 "" => Ok(Self::CursorMoveUp(1)),
                 arg => match arg.parse::<usize>() {
                     Ok(s) => Ok(Self::CursorMoveUp(s)),
+                    Err(e) => Err(JoshutoError::new(
+                        JoshutoErrorKind::ParseError,
+                        e.to_string(),
+                    )),
+                },
+            },
+            "parent_cursor_move_down" => match arg {
+                "" => Ok(Self::ParentCursorMoveDown(1)),
+                arg => match arg.parse::<usize>() {
+                    Ok(s) => Ok(Self::ParentCursorMoveDown(s)),
+                    Err(e) => Err(JoshutoError::new(
+                        JoshutoErrorKind::ParseError,
+                        e.to_string(),
+                    )),
+                },
+            },
+            "parent_cursor_move_up" => match arg {
+                "" => Ok(Self::ParentCursorMoveUp(1)),
+                arg => match arg.parse::<usize>() {
+                    Ok(s) => Ok(Self::ParentCursorMoveUp(s)),
                     Err(e) => Err(JoshutoError::new(
                         JoshutoErrorKind::ParseError,
                         e.to_string(),
@@ -246,6 +284,7 @@ impl KeyCommand {
                     format!("{}: {}", arg, e),
                 )),
             },
+            "show_workers" => Ok(Self::ShowWorkers),
             "sort" => match arg {
                 "reverse" => Ok(Self::SortReverse),
                 arg => match SortType::parse(arg) {
@@ -256,18 +295,12 @@ impl KeyCommand {
                     )),
                 },
             },
-            "tab_switch" => match arg {
-                "" => Err(JoshutoError::new(
+            "tab_switch" => match arg.parse::<i32>() {
+                Ok(s) => Ok(Self::TabSwitch(s)),
+                Err(e) => Err(JoshutoError::new(
                     JoshutoErrorKind::IOInvalidData,
-                    format!("{}: {}", command, "No option provided"),
+                    format!("{}: {}", command, e.to_string()),
                 )),
-                arg => match arg.parse::<i32>() {
-                    Ok(s) => Ok(Self::TabSwitch(s)),
-                    Err(e) => Err(JoshutoError::new(
-                        JoshutoErrorKind::IOInvalidData,
-                        format!("{}: {}", command, e.to_string()),
-                    )),
-                },
             },
             "toggle_hidden" => Ok(Self::ToggleHiddenFiles),
             inp => Err(JoshutoError::new(
@@ -295,6 +328,7 @@ impl JoshutoRunnable for KeyCommand {
             Self::CutFiles => file_ops::cut(context),
             Self::CopyFiles => file_ops::copy(context),
             Self::PasteFiles(options) => file_ops::paste(context, options.clone()),
+            Self::CopyFileName => file_ops::copy_filename(context),
 
             Self::CursorMoveUp(u) => cursor_move::up(context, *u),
             Self::CursorMoveDown(u) => cursor_move::down(context, *u),
@@ -302,6 +336,9 @@ impl JoshutoRunnable for KeyCommand {
             Self::CursorMoveEnd => cursor_move::end(context),
             Self::CursorMovePageUp => cursor_move::page_up(context, backend),
             Self::CursorMovePageDown => cursor_move::page_down(context, backend),
+
+            Self::ParentCursorMoveUp(u) => parent_cursor_move::parent_up(context, *u),
+            Self::ParentCursorMoveDown(u) => parent_cursor_move::parent_down(context, *u),
 
             Self::DeleteFiles => {
                 delete_files::delete_selected_files(context, backend)?;
@@ -326,17 +363,15 @@ impl JoshutoRunnable for KeyCommand {
             Self::SelectFiles { toggle, all } => selection::select_files(context, *toggle, *all),
             Self::SetMode => set_mode::set_mode(context, backend),
             Self::ShellCommand(v) => shell::shell(context, backend, v.as_slice()),
+            Self::ShowWorkers => show_workers::show_workers(context, backend),
 
             Self::ToggleHiddenFiles => show_hidden::toggle_hidden(context),
 
-            Self::Sort(t) => sort::set_sort(context, t.clone()),
+            Self::Sort(t) => sort::set_sort(context, *t),
             Self::SortReverse => sort::toggle_reverse(context),
 
             Self::TabSwitch(i) => {
-                let new_index = (context.tab_context_ref().get_index() as i32 + i)
-                    % context.tab_context_ref().len() as i32;
-                let new_index = new_index as usize;
-                tab_ops::tab_switch(new_index, context)?;
+                tab_ops::tab_switch(*i, context)?;
                 Ok(())
             }
         }
@@ -346,7 +381,21 @@ impl JoshutoRunnable for KeyCommand {
 impl std::fmt::Display for KeyCommand {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match &*self {
-            Self::ChangeDirectory(p) => write!(f, "{} {}", self.command(), p.to_str().unwrap()),
+            Self::ChangeDirectory(p) => write!(f, "{} {:?}", self.command(), p),
+            Self::CommandLine(s, p) => write!(f, "{} {} {}", self.command(), s, p),
+            Self::PasteFiles(options) => write!(f, "{}  {}", self.command(), options),
+            Self::CursorMoveUp(i) => write!(f, "{} {}", self.command(), i),
+            Self::CursorMoveDown(i) => write!(f, "{} {}", self.command(), i),
+            Self::NewDirectory(d) => write!(f, "{} {:?}", self.command(), d),
+            Self::RenameFile(name) => write!(f, "{} {:?}", self.command(), name),
+
+            Self::Search(s) => write!(f, "{} {}", self.command(), s),
+            Self::SelectFiles { toggle, all } => {
+                write!(f, "{} toggle={} all={}", self.command(), toggle, all)
+            }
+            Self::ShellCommand(c) => write!(f, "{} {:?}", self.command(), c),
+            Self::Sort(t) => write!(f, "{} {}", self.command(), t),
+            Self::TabSwitch(i) => write!(f, "{} {}", self.command(), i),
             _ => write!(f, "{}", self.command()),
         }
     }

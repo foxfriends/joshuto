@@ -12,16 +12,18 @@ mod util;
 
 use lazy_static::lazy_static;
 use std::fs::File;
-use std::io::Write;
+use std::io::prelude::*;
 use std::path::PathBuf;
 use std::process;
 use structopt::StructOpt;
 
-use config::{
+use crate::config::{
     ConfigStructure, JoshutoCommandMapping, JoshutoConfig, JoshutoMimetype, JoshutoPreview,
     JoshutoTheme,
 };
-use run::run;
+use crate::context::JoshutoContext;
+use crate::error::{JoshutoError, JoshutoErrorKind};
+use crate::run::run;
 
 const PROGRAM_NAME: &str = "joshuto";
 const CONFIG_FILE: &str = "joshuto.toml";
@@ -48,12 +50,12 @@ lazy_static! {
     static ref MIMETYPE_T: JoshutoMimetype = JoshutoMimetype::get_config();
     static ref PREVIEW_T: JoshutoPreview = JoshutoPreview::get_config();
 
-    static ref HOME_DIR: Option<PathBuf> = dirs::home_dir();
+    static ref HOME_DIR: Option<PathBuf> = dirs_next::home_dir();
     static ref USERNAME: String = whoami::username();
     static ref HOSTNAME: String = whoami::hostname();
 }
 
-#[derive(StructOpt, Debug)]
+#[derive(Clone, Debug, StructOpt)]
 pub struct Args {
     #[structopt(long = "path", parse(from_os_str))]
     path: Option<PathBuf>,
@@ -61,17 +63,21 @@ pub struct Args {
     choosefile: Option<PathBuf>,
     #[structopt(short = "v", long = "version")]
     version: bool,
+    #[structopt(long = "lastdir", parse(from_os_str))]
+    last_dir: Option<PathBuf>,
 }
 
-fn main() {
-    let args = Args::from_args();
-
+fn run_joshuto(args: Args) -> Result<(), JoshutoError> {
     if args.version {
         let version = env!("CARGO_PKG_VERSION");
         println!("{}", version);
-        return;
+        let err = JoshutoError::new(
+            JoshutoErrorKind::EnvVarNotPresent,
+            "CARGO_PKG_VERSION variable not found".to_string(),
+        );
+        return Err(err);
     }
-    if let Some(p) = &args.path {
+    if let Some(p) = args.path.as_ref() {
         match std::env::set_current_dir(p.as_path()) {
             Ok(_) => {}
             Err(e) => {
@@ -84,17 +90,47 @@ fn main() {
     let config = JoshutoConfig::get_config();
     let keymap = JoshutoCommandMapping::get_config();
 
-    match run(config, keymap, args.choosefile.is_some()) {
-        Ok(final_selection) => {
-            if let Some(path) = args.choosefile {
-                let mut f = File::create(path).unwrap();
-                for file in final_selection {
-                    writeln!(f, "{}", file.display()).unwrap();
-                }
+    let mut context = JoshutoContext::new(config, args.choosefile.is_some());
+
+    {
+        let mut backend: ui::TuiBackend = ui::TuiBackend::new()?;
+        let final_selection = run(
+            &mut backend,
+            &mut context,
+            keymap,
+            args.choosefile.is_some(),
+        )?;
+        if let Some(path) = args.choosefile {
+            let mut f = File::create(path).unwrap();
+            for file in final_selection {
+                writeln!(f, "{}", file.display()).unwrap();
             }
         }
+    }
+
+    if let Some(p) = args.last_dir {
+        let curr_path = std::env::current_dir()?;
+        let mut file = File::create(p)?;
+        file.write_all(
+            curr_path
+                .into_os_string()
+                .as_os_str()
+                .to_string_lossy()
+                .as_bytes(),
+        )?;
+        file.write_all("\n".as_bytes())?;
+    }
+
+    Ok(())
+}
+
+fn main() {
+    let args = Args::from_args();
+
+    match run_joshuto(args) {
+        Ok(_) => {}
         Err(e) => {
-            eprintln!("{}", e);
+            eprintln!("{}", e.to_string());
             process::exit(1);
         }
     }

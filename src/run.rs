@@ -1,37 +1,35 @@
-use crate::commands::{CommandKeybind, JoshutoRunnable};
-use crate::config::{JoshutoCommandMapping, JoshutoConfig};
+use termion::event::Event;
+
+use crate::commands::{CommandKeybind, JoshutoRunnable, KeyCommand};
+use crate::config::JoshutoCommandMapping;
 use crate::context::JoshutoContext;
 use crate::tab::JoshutoTab;
 use crate::ui;
-use crate::ui::widgets::{TuiCommandMenu, TuiView};
-use crate::util::event::Event;
+use crate::ui::views::{TuiCommandMenu, TuiView};
+use crate::util::event::JoshutoEvent;
+use crate::util::input;
 use crate::util::load_child::LoadChild;
-use crate::util::worker;
 use std::path::PathBuf;
 
 pub fn run(
-    config_t: JoshutoConfig,
+    backend: &mut ui::TuiBackend,
+    context: &mut JoshutoContext,
     keymap_t: JoshutoCommandMapping,
     choosefile: bool,
 ) -> std::io::Result<Vec<PathBuf>> {
-    let mut backend: ui::TuiBackend = ui::TuiBackend::new()?;
-
-    let mut context = JoshutoContext::new(config_t, choosefile);
     let curr_path = std::env::current_dir()?;
     {
         // Initialize an initial tab
-        let tab = JoshutoTab::new(curr_path, &context.config_t.sort_option)?;
+        let tab = JoshutoTab::new(curr_path, &context.config_ref().sort_option)?;
         context.tab_context_mut().push_tab(tab);
 
         // trigger a preview of child
-        LoadChild::load_child(&mut context)?;
-
-        // render our view
-        let view = TuiView::new(&context);
-        backend.render(view);
+        LoadChild::load_child(context)?;
     }
 
     while !context.exit {
+        backend.render(TuiView::new(&context));
+
         if !context.worker_is_busy() && !context.worker_is_empty() {
             context.start_next_job();
         }
@@ -40,45 +38,54 @@ pub fn run(
             Ok(event) => event,
             Err(_) => return Ok(vec![]), // TODO
         };
-
         match event {
-            Event::IOWorkerProgress(res) => {
-                worker::process_worker_progress(&mut context, res);
+            JoshutoEvent::Termion(Event::Mouse(event)) => {
+                input::process_mouse(event, context, backend);
             }
-            Event::IOWorkerResult(res) => {
-                worker::process_finished_worker(&mut context, res);
-            }
-            Event::Input(key) => {
+            JoshutoEvent::Termion(key) => {
                 if !context.message_queue_ref().is_empty() {
                     context.pop_msg();
                 }
-                match keymap_t.as_ref().get(&key) {
-                    None => {
-                        context.push_msg(format!("Unknown keycode: {:?}", key));
-                    }
-                    Some(CommandKeybind::SimpleKeybind(command)) => {
-                        if let Err(e) = command.execute(&mut context, &mut backend) {
+                match key {
+                    Event::Unsupported(s) if s.as_slice() == [27, 79, 65] => {
+                        let command = KeyCommand::CursorMoveUp(1);
+                        if let Err(e) = command.execute(context, backend) {
                             context.push_msg(e.to_string());
                         }
                     }
-                    Some(CommandKeybind::CompositeKeybind(m)) => {
-                        let cmd = {
-                            let mut menu = TuiCommandMenu::new();
-                            menu.get_input(&mut backend, &mut context, &m)
-                        };
-
-                        if let Some(command) = cmd {
-                            if let Err(e) = command.execute(&mut context, &mut backend) {
+                    Event::Unsupported(s) if s.as_slice() == [27, 79, 66] => {
+                        let command = KeyCommand::CursorMoveDown(1);
+                        if let Err(e) = command.execute(context, backend) {
+                            context.push_msg(e.to_string());
+                        }
+                    }
+                    key => match keymap_t.as_ref().get(&key) {
+                        None => {
+                            context.push_msg(format!("Unmapped input: {:?}", key));
+                        }
+                        Some(CommandKeybind::SimpleKeybind(command)) => {
+                            if let Err(e) = command.execute(context, backend) {
                                 context.push_msg(e.to_string());
                             }
                         }
-                    }
+                        Some(CommandKeybind::CompositeKeybind(m)) => {
+                            let cmd = {
+                                let mut menu = TuiCommandMenu::new();
+                                menu.get_input(backend, context, &m)
+                            };
+
+                            if let Some(command) = cmd {
+                                if let Err(e) = command.execute(context, backend) {
+                                    context.push_msg(e.to_string());
+                                }
+                            }
+                        }
+                    },
                 }
                 context.flush_event();
             }
+            event => input::process_noninteractive(event, context),
         }
-        let view = TuiView::new(&context);
-        backend.render(view);
     }
 
     if !context.choosefile {

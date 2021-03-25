@@ -1,8 +1,10 @@
 use tui::buffer::Buffer;
 use tui::layout::Rect;
-use tui::style::{Modifier, Style};
-use tui::text::{Span, Spans};
+use tui::style::{Color, Modifier, Style};
+use tui::text::Span;
 use tui::widgets::{Paragraph, Widget, Wrap};
+
+use unicode_width::UnicodeWidthStr;
 
 pub struct TuiTabBar<'a> {
     name: &'a str,
@@ -18,14 +20,25 @@ impl<'a> TuiTabBar<'a> {
 
 impl<'a> Widget for TuiTabBar<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let selected = Style::default().add_modifier(Modifier::REVERSED);
+        let selected = Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::REVERSED);
 
-        let text = Spans::from(vec![
-            Span::styled(format!("{}: {}", self.curr + 1, self.name), selected),
-            Span::raw(format!("/{}", self.len)),
-        ]);
+        let str1 = format!("{}/{}", self.curr + 1, self.len);
+        let str2 = {
+            let space_avail = if str1.width() >= area.width as usize {
+                0
+            } else {
+                area.width as usize - str1.len()
+            };
+            if space_avail >= self.name.width() {
+                self.name
+            } else {
+                "…"
+            }
+        };
 
-        Paragraph::new(text)
+        Paragraph::new(Span::styled(format!("{}: {}", str1, str2), selected))
             .wrap(Wrap { trim: true })
             .render(area, buf);
     }

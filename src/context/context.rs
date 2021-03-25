@@ -1,16 +1,17 @@
+use std::collections::vec_deque::Iter;
 use std::collections::VecDeque;
 use std::sync::mpsc;
 use std::thread;
 
 use crate::config;
 use crate::context::{LocalStateContext, TabContext};
-use crate::io::{IOWorkerObserver, IOWorkerThread};
-use crate::util::event::{Event, Events};
+use crate::io::{IOWorkerObserver, IOWorkerProgress, IOWorkerThread};
+use crate::util::event::{Events, JoshutoEvent};
 
 pub struct JoshutoContext {
     pub exit: bool,
-    pub config_t: config::JoshutoConfig,
     pub choosefile: bool,
+    config: config::JoshutoConfig,
     events: Events,
     tab_context: TabContext,
     local_state: Option<LocalStateContext>,
@@ -21,7 +22,7 @@ pub struct JoshutoContext {
 }
 
 impl JoshutoContext {
-    pub fn new(config_t: config::JoshutoConfig, choosefile: bool) -> Self {
+    pub fn new(config: config::JoshutoConfig, choosefile: bool) -> Self {
         Self {
             exit: false,
             events: Events::new(),
@@ -31,9 +32,17 @@ impl JoshutoContext {
             message_queue: VecDeque::with_capacity(4),
             worker_queue: VecDeque::new(),
             worker: None,
-            config_t,
+            config,
             choosefile,
         }
+    }
+
+    pub fn config_ref(&self) -> &config::JoshutoConfig {
+        &self.config
+    }
+
+    pub fn config_mut(&mut self) -> &mut config::JoshutoConfig {
+        &mut self.config
     }
 
     pub fn tab_context_ref(&self) -> &TabContext {
@@ -54,10 +63,10 @@ impl JoshutoContext {
     }
 
     // event related
-    pub fn poll_event(&self) -> Result<Event, mpsc::RecvError> {
+    pub fn poll_event(&self) -> Result<JoshutoEvent, mpsc::RecvError> {
         self.events.next()
     }
-    pub fn get_event_tx(&self) -> mpsc::Sender<Event> {
+    pub fn get_event_tx(&self) -> mpsc::Sender<JoshutoEvent> {
         self.events.event_tx.clone()
     }
     pub fn flush_event(&self) {
@@ -67,9 +76,6 @@ impl JoshutoContext {
     // local state related
     pub fn set_local_state(&mut self, state: LocalStateContext) {
         self.local_state = Some(state);
-    }
-    pub fn get_local_state(&self) -> Option<&LocalStateContext> {
-        self.local_state.as_ref()
     }
     pub fn take_local_state(&mut self) -> Option<LocalStateContext> {
         self.local_state.take()
@@ -90,15 +96,27 @@ impl JoshutoContext {
     pub fn worker_is_busy(&self) -> bool {
         self.worker.is_some()
     }
-    pub fn worker_len(&self) -> usize {
-        self.worker_queue.len()
-    }
     pub fn worker_is_empty(&self) -> bool {
         self.worker_queue.is_empty()
     }
-    pub fn set_worker_msg(&mut self, msg: String) {
+
+    pub fn worker_iter(&self) -> Iter<IOWorkerThread> {
+        self.worker_queue.iter()
+    }
+
+    pub fn worker_ref(&self) -> Option<&IOWorkerObserver> {
+        self.worker.as_ref()
+    }
+
+    pub fn set_worker_progress(&mut self, res: IOWorkerProgress) {
         if let Some(s) = self.worker.as_mut() {
-            s.set_msg(msg);
+            s.set_progress(res);
+        }
+    }
+
+    pub fn update_worker_msg(&mut self) {
+        if let Some(s) = self.worker.as_mut() {
+            s.update_msg();
         }
     }
     pub fn worker_msg(&self) -> Option<&str> {
@@ -110,7 +128,7 @@ impl JoshutoContext {
         let tx = self.get_event_tx();
 
         if let Some(worker) = self.worker_queue.pop_front() {
-            let src = worker.paths[0].clone();
+            let src = worker.paths[0].parent().unwrap().to_path_buf();
             let dest = worker.dest.clone();
             let handle = thread::spawn(move || {
                 let (wtx, wrx) = mpsc::channel();
@@ -118,17 +136,17 @@ impl JoshutoContext {
                 let worker_handle = thread::spawn(move || worker.start(wtx));
                 // relay worker info to event loop
                 while let Ok(progress) = wrx.recv() {
-                    tx.send(Event::IOWorkerProgress(progress));
+                    let _ = tx.send(JoshutoEvent::IOWorkerProgress(progress));
                 }
                 let result = worker_handle.join();
 
                 match result {
                     Ok(res) => {
-                        let _ = tx.send(Event::IOWorkerResult(res));
+                        let _ = tx.send(JoshutoEvent::IOWorkerResult(res));
                     }
                     Err(_) => {
                         let err = std::io::Error::new(std::io::ErrorKind::Other, "Sending Error");
-                        let _ = tx.send(Event::IOWorkerResult(Err(err)));
+                        let _ = tx.send(JoshutoEvent::IOWorkerResult(Err(err)));
                     }
                 }
             });

@@ -24,7 +24,7 @@ impl SortType {
             _ => None,
         }
     }
-    pub fn as_str(&self) -> &str {
+    pub const fn as_str(&self) -> &str {
         match *self {
             SortType::Lexical => "lexical",
             SortType::Mtime => "mtime",
@@ -34,8 +34,15 @@ impl SortType {
     }
 }
 
+impl std::fmt::Display for SortType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SortOption {
+    pub show_icons: bool,
     pub show_hidden: bool,
     pub directories_first: bool,
     pub case_sensitive: bool,
@@ -105,6 +112,7 @@ impl SortOption {
 impl std::default::Default for SortOption {
     fn default() -> Self {
         SortOption {
+            show_icons: false,
             show_hidden: false,
             directories_first: true,
             case_sensitive: false,
@@ -153,5 +161,5 @@ fn mtime_sort(file1: &JoshutoDirEntry, file2: &JoshutoDirEntry) -> cmp::Ordering
 }
 
 fn size_sort(file1: &JoshutoDirEntry, file2: &JoshutoDirEntry) -> cmp::Ordering {
-    file1.metadata.len.cmp(&file2.metadata.len)
+    file1.metadata.len().cmp(&file2.metadata.len())
 }

@@ -1,18 +1,17 @@
 use rustyline::completion::{Candidate, Completer, FilenameCompleter, Pair};
 use rustyline::line_buffer;
 
-use termion::event::Key;
+use termion::event::{Event, Key};
 use tui::layout::Rect;
-use tui::style::{Color, Modifier, Style};
-use tui::text::{Span, Spans};
-use tui::widgets::{Clear, Paragraph, Wrap};
+use tui::widgets::Clear;
+use unicode_width::UnicodeWidthStr;
 
 use crate::context::JoshutoContext;
+use crate::ui::views::TuiView;
+use crate::ui::widgets::{TuiMenu, TuiMultilineText};
 use crate::ui::TuiBackend;
-use crate::util::event::Event;
-use crate::util::worker;
-
-use super::{TuiMenu, TuiView};
+use crate::util::event::JoshutoEvent;
+use crate::util::input;
 
 struct CompletionTracker {
     pub index: usize,
@@ -32,11 +31,16 @@ impl CompletionTracker {
     }
 }
 
+pub struct CursorInfo {
+    pub x: usize,
+    pub y: usize,
+}
+
 pub struct TuiTextField<'a> {
     _prompt: &'a str,
     _prefix: &'a str,
     _suffix: &'a str,
-    _menu_items: Option<Vec<&'a str>>,
+    _menu_items: Vec<&'a str>,
 }
 
 impl<'a> TuiTextField<'a> {
@@ -44,7 +48,7 @@ impl<'a> TuiTextField<'a> {
     where
         I: Iterator<Item = &'a str>,
     {
-        self._menu_items = Some(items.collect());
+        self._menu_items = items.collect();
         self
     }
 
@@ -83,90 +87,79 @@ impl<'a> TuiTextField<'a> {
 
         let terminal = backend.terminal_mut();
 
+        terminal.show_cursor();
+
         loop {
             terminal
                 .draw(|frame| {
-                    let f_size: Rect = frame.size();
-                    if f_size.height == 0 {
+                    let area: Rect = frame.size();
+                    if area.height == 0 {
                         return;
                     }
-
                     {
                         let mut view = TuiView::new(&context);
                         view.show_bottom_status = false;
-                        frame.render_widget(view, f_size);
+                        frame.render_widget(view, area);
                     }
 
-                    if let Some(items) = self._menu_items.as_ref() {
-                        let menu_len = items.len();
-                        let menu_y = if menu_len + 2 > f_size.height as usize {
-                            0
-                        } else {
-                            (f_size.height as usize - menu_len - 2) as u16
-                        };
-
-                        let rect = Rect {
-                            x: 0,
-                            y: menu_y,
-                            width: f_size.width,
-                            height: menu_len as u16,
-                        };
-                        let menu_widget = TuiMenu::new(items);
-                        frame.render_widget(menu_widget, rect);
-                    }
-
+                    let area_width = area.width as usize;
+                    let buffer_str = line_buffer.as_str();
                     let cursor_xpos = line_buffer.pos();
 
-                    let prefix = &line_buffer.as_str()[..cursor_xpos];
+                    let line_str = format!("{}{}", self._prompt, buffer_str);
+                    let multiline = TuiMultilineText::new(line_str.as_str(), area_width);
+                    let multiline_height = multiline.height();
 
-                    let curr = line_buffer.as_str()[cursor_xpos..].chars().next();
-                    let (suffix, curr) = match curr {
-                        Some(c) => {
-                            let curr_len = c.len_utf8();
-                            (&line_buffer.as_str()[(cursor_xpos + curr_len)..], c)
-                        }
-                        None => ("", ' '),
-                    };
+                    // render menu
+                    {
+                        let menu_widget = TuiMenu::new(self._menu_items.as_slice());
+                        let menu_len = menu_widget.len();
+                        let menu_y = if menu_len + 1 > area.height as usize {
+                            0
+                        } else {
+                            (area.height as usize - menu_len - 1) as u16
+                        };
 
-                    let cmd_prompt_style = Style::default().fg(Color::LightGreen);
-                    let cursor_style = Style::default().add_modifier(Modifier::REVERSED);
-                    let default_style = Style::default().fg(Color::Reset).bg(Color::Reset);
+                        let menu_rect = Rect {
+                            x: 0,
+                            y: menu_y - multiline_height as u16,
+                            width: area.width,
+                            height: menu_len as u16 + 1,
+                        };
+                        frame.render_widget(Clear, menu_rect);
+                        frame.render_widget(menu_widget, menu_rect);
+                    }
 
-                    let curr_string = curr.to_string();
-
-                    let text = Spans::from(vec![
-                        Span::styled(self._prompt, cmd_prompt_style),
-                        Span::styled(prefix, default_style),
-                        Span::styled(curr_string, cursor_style),
-                        Span::styled(suffix, default_style),
-                        Span::styled(" ", default_style),
-                        Span::styled(".", Style::default().fg(Color::Black).bg(Color::Reset)),
-                    ]);
-
-                    let textfield_rect = Rect {
+                    let multiline_rect = Rect {
                         x: 0,
-                        y: f_size.height - 1,
-                        width: f_size.width,
-                        height: 1,
+                        y: area.height - multiline_height as u16,
+                        width: area.width,
+                        height: multiline_height as u16,
+                    };
+                    let mut cursor_info = CursorInfo {
+                        x: 0,
+                        y: area.height as usize,
                     };
 
-                    frame.render_widget(Clear, textfield_rect);
-                    frame.render_widget(
-                        Paragraph::new(text).wrap(Wrap { trim: true }),
-                        textfield_rect,
-                    );
+                    // get cursor render position
+                    let cursor_prefix_width =
+                        buffer_str[0..cursor_xpos].width() + self._prompt.len();
+                    let y_offset = cursor_prefix_width / area_width;
+                    cursor_info.y = area.height as usize - multiline_height + y_offset;
+                    cursor_info.x = cursor_prefix_width % area_width + y_offset;
+
+                    // render multiline textfield
+                    frame.render_widget(Clear, multiline_rect);
+                    frame.render_widget(multiline, multiline_rect);
+
+                    // render cursor
+                    frame.set_cursor(cursor_info.x as u16, cursor_info.y as u16);
                 })
                 .unwrap();
 
             if let Ok(event) = context.poll_event() {
                 match event {
-                    Event::IOWorkerProgress(res) => {
-                        worker::process_worker_progress(context, res);
-                    }
-                    Event::IOWorkerResult(res) => {
-                        worker::process_finished_worker(context, res);
-                    }
-                    Event::Input(key) => {
+                    JoshutoEvent::Termion(Event::Key(key)) => {
                         match key {
                             Key::Backspace => {
                                 if line_buffer.backspace(1) {
@@ -199,6 +192,7 @@ impl<'a> TuiTextField<'a> {
                             Key::Up => {}
                             Key::Down => {}
                             Key::Esc => {
+                                terminal.hide_cursor();
                                 return None;
                             }
                             Key::Char('\t') => {
@@ -244,9 +238,15 @@ impl<'a> TuiTextField<'a> {
                         }
                         context.flush_event();
                     }
+                    JoshutoEvent::Termion(_) => {
+                        context.flush_event();
+                    }
+                    event => input::process_noninteractive(event, context),
                 };
             }
         }
+        terminal.hide_cursor();
+
         if line_buffer.as_str().is_empty() {
             None
         } else {
@@ -262,7 +262,7 @@ impl<'a> std::default::Default for TuiTextField<'a> {
             _prompt: "",
             _prefix: "",
             _suffix: "",
-            _menu_items: None,
+            _menu_items: vec![],
         }
     }
 }

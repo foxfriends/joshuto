@@ -11,9 +11,9 @@ pub fn cd(path: &path::Path, context: &mut JoshutoContext) -> std::io::Result<()
     Ok(())
 }
 
-pub fn change_directories(path: &path::Path, context: &mut JoshutoContext) -> std::io::Result<()> {
+fn _change_directory(path: &path::Path, context: &mut JoshutoContext) -> std::io::Result<()> {
     cd(path, context)?;
-    let sort_options = context.config_t.sort_option.clone();
+    let sort_options = context.config_ref().sort_option.clone();
     context
         .tab_context_mut()
         .curr_tab_mut()
@@ -24,7 +24,7 @@ pub fn change_directories(path: &path::Path, context: &mut JoshutoContext) -> st
 }
 
 pub fn change_directory(context: &mut JoshutoContext, path: &path::Path) -> JoshutoResult<()> {
-    change_directories(path, context)?;
+    _change_directory(path, context)?;
     LoadChild::load_child(context)?;
     Ok(())
 }
