@@ -6,6 +6,8 @@ use ratatui::widgets::{Clear, Widget};
 
 use crate::config::clean::keymap::KeyMapping;
 use crate::context::AppContext;
+use crate::fs::FileType;
+use crate::key_command::CommandKeybind;
 use crate::traits::ToString;
 use crate::ui::views::TuiView;
 use crate::ui::widgets::TuiMenu;
@@ -32,7 +34,22 @@ impl<'a> Widget for TuiCommandMenu<'a> {
         let mut display_vec: Vec<String> = self
             .keymap
             .iter()
-            .map(|(k, v)| format!("  {}        {}", k.to_string(), v))
+            .flat_map(|(k, v)| match v {
+                CommandKeybind::SimpleKeybind { commands, .. } => commands
+                    .iter()
+                    .map(|(filetype, command)| {
+                        let filetype = match filetype {
+                            None => "",
+                            Some(FileType::Directory) => " [Directory]",
+                            Some(FileType::File) => " [File]",
+                        };
+                        format!("  {}        {}{}", k.to_string(), command[0], filetype)
+                    })
+                    .collect(),
+                CommandKeybind::CompositeKeybind(..) => {
+                    vec![format!("  {}        ...", k.to_string())]
+                }
+            })
             .collect();
         display_vec.sort();
         let display_str: Vec<&str> = display_vec.iter().map(|v| v.as_str()).collect();

@@ -83,7 +83,7 @@ fn process_input(
     // handle the event
     match event {
         AppEvent::Termion(Event::Mouse(event)) => {
-            process_event::process_mouse(event, context, backend, keymap_t);
+            process_event::process_mouse(event, context, backend, &keymap_t);
             preview_default::load_preview(context, backend);
         }
         AppEvent::Termion(key) => {
@@ -94,7 +94,7 @@ fn process_input(
                 // in the event where mouse input is not supported
                 // but we still want to register scroll
                 Event::Unsupported(s) => {
-                    process_event::process_unsupported(context, backend, keymap_t, s);
+                    process_event::process_unsupported(context, backend, &keymap_t, s);
                 }
                 key => match keymap_t.default_view.get(&key) {
                     None => {
@@ -103,22 +103,39 @@ fn process_input(
                             .push_info(format!("Unmapped input: {}", key.to_string()));
                     }
                     Some(CommandKeybind::SimpleKeybind { commands, .. }) => {
-                        for command in commands {
-                            if let Err(e) = command.execute(context, backend, keymap_t) {
-                                context.message_queue_mut().push_error(e.to_string());
-                                break;
+                        let commands = context
+                            .tab_context_ref()
+                            .curr_tab_ref()
+                            .curr_list_ref()
+                            .and_then(|s| s.curr_entry_ref())
+                            .map(|entry| *entry.metadata.file_type())
+                            .and_then(|filetype| commands.get(&Some(filetype)))
+                            .or_else(|| commands.get(&None));
+
+                        match commands {
+                            Some(commands) => {
+                                for command in commands {
+                                    if let Err(e) = command.execute(context, backend, keymap_t) {
+                                        context.message_queue_mut().push_error(e.to_string());
+                                        break;
+                                    }
+                                }
+                            }
+                            None => {
+                                context
+                                    .message_queue_mut()
+                                    .push_info(format!("Unmapped input: {}", key.to_string()));
                             }
                         }
                     }
                     Some(CommandKeybind::CompositeKeybind(m)) => {
-                        let commands =
+                        let cmd =
                             process_event::poll_event_until_simple_keybind(backend, context, m);
 
-                        if let Some(commands) = commands {
+                        if let Some(commands) = cmd {
                             for command in commands {
-                                if let Err(e) = command.execute(context, backend, keymap_t) {
+                                if let Err(e) = command.execute(context, backend, &keymap_t) {
                                     context.message_queue_mut().push_error(e.to_string());
-                                    break;
                                 }
                             }
                         }

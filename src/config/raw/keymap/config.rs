@@ -1,3 +1,4 @@
+use crate::fs::FileType;
 use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -10,6 +11,7 @@ pub struct CommandKeymap {
     pub command: Option<String>,
 
     pub description: Option<String>,
+    pub filetype: Option<FileType>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

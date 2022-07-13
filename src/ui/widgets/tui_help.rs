@@ -8,6 +8,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Cell, Row, Table, Widget};
 
 use crate::config::clean::keymap::KeyMapping;
+use crate::fs::FileType;
 use crate::key_command::traits::CommandComment;
 use crate::key_command::CommandKeybind;
 
@@ -17,6 +18,7 @@ lazy_static! {
     static ref HEADER_STYLE: Style = Style::default().fg(Color::Yellow);
     static ref KEY_STYLE: Style = Style::default().fg(Color::Green);
     static ref COMMAND_STYLE: Style = Style::default().fg(Color::Blue);
+    static ref FILETYPE_STYLE: Style = Style::default().fg(Color::Magenta);
 }
 
 const TITLE: &str = "Keybindings";
@@ -61,7 +63,7 @@ impl<'a> Widget for TuiHelp<'a> {
         ];
         let table_widget = Table::new(keymap)
             .header(
-                Row::new(vec!["Key", "Command", "Description"])
+                Row::new(vec!["Key", "Command", "Filetype", "Description"])
                     .style(*HEADER_STYLE)
                     .bottom_margin(1),
             )
@@ -106,7 +108,8 @@ pub fn get_keymap_table<'a>(
         rows.push(Row::new(vec![
             Cell::from(row[0].clone()).style(*KEY_STYLE),
             Cell::from(row[1].clone()).style(*COMMAND_STYLE),
-            Cell::from(row[2].clone()).style(*DEFAULT_STYLE),
+            Cell::from(row[2].clone()).style(*FILETYPE_STYLE),
+            Cell::from(row[3].clone()).style(*DEFAULT_STYLE),
         ]));
     }
     rows
@@ -118,20 +121,62 @@ pub fn get_raw_keymap_table<'a>(
     keymap: &'a KeyMapping,
     search_query: &'a str,
     sort_by: usize,
-) -> Vec<[String; 3]> {
+) -> Vec<[String; 4]> {
     let search_query_lowercase = &String::from(search_query).to_lowercase();
     let mut rows = Vec::new();
     for (event, bind) in keymap.iter() {
         let key = key_event_to_string(event);
-        let (command, comment) = match bind {
+        match bind {
             CommandKeybind::SimpleKeybind {
                 commands,
                 description: Some(desc),
-            } => (format!("{}", commands[0]), desc.as_str()),
+            } => {
+                for (filetype, command) in commands {
+                    let filetype = match filetype {
+                        None => "".to_owned(),
+                        Some(FileType::Directory) => "Directory".to_owned(),
+                        Some(FileType::File) => "File".to_owned(),
+                    };
+                    let command_str = command[0].to_string();
+                    if key.contains(search_query)
+                        || command_str.contains(search_query)
+                        || command[0]
+                            .comment()
+                            .to_lowercase()
+                            .contains(search_query_lowercase)
+                    {
+                        rows.push([key.to_owned(), command_str, filetype, desc.to_owned()])
+                    }
+                }
+            }
             CommandKeybind::SimpleKeybind {
                 commands,
                 description: None,
-            } => (format!("{}", commands[0]), commands[0].comment()),
+            } => {
+                for (filetype, command) in commands {
+                    let filetype = match filetype {
+                        None => "".to_owned(),
+                        Some(FileType::Directory) => "Directory".to_owned(),
+                        Some(FileType::File) => "File".to_owned(),
+                    };
+                    let command_str = command[0].to_string();
+                    if key.contains(search_query)
+                        || command_str.contains(search_query)
+                        || command[0]
+                            .comment()
+                            .to_lowercase()
+                            .contains(search_query_lowercase)
+                    {
+                        rows.push([
+                            key.to_owned(),
+                            command_str,
+                            filetype,
+                            command[0].comment().to_owned(),
+                        ])
+                    }
+                }
+            }
+
             CommandKeybind::CompositeKeybind(sub_keymap) => {
                 let mut sub_rows = get_raw_keymap_table(sub_keymap, "", sort_by);
                 for _ in 0..sub_rows.len() {
@@ -139,20 +184,13 @@ pub fn get_raw_keymap_table<'a>(
                     sub_row[0] = key.clone() + &sub_row[0];
                     if sub_row[0].contains(search_query)
                         || sub_row[1].contains(search_query)
-                        || sub_row[2].to_lowercase().contains(search_query_lowercase)
+                        || sub_row[3].to_lowercase().contains(search_query_lowercase)
                     {
                         rows.push(sub_row)
                     }
                 }
-                continue;
             }
         };
-        if key.contains(search_query)
-            || command.contains(search_query)
-            || comment.to_lowercase().contains(search_query_lowercase)
-        {
-            rows.push([key, command, comment.to_string()]);
-        }
     }
     rows.sort_by_cached_key(|x| x[sort_by].clone());
     rows

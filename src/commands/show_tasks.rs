@@ -30,9 +30,11 @@ pub fn show_tasks(
                                 .push_info(format!("Unmapped input: {}", key.to_string()));
                         }
                         Some(CommandKeybind::SimpleKeybind { commands, .. }) => {
-                            for command in commands {
-                                if let Command::ShowTasks = command {
-                                    exit = true;
+                            if let Some(commands) = commands.get(&None) {
+                                for command in commands {
+                                    if let Command::ShowTasks = command {
+                                        exit = true;
+                                    }
                                 }
                             }
                         }

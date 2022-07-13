@@ -1,9 +1,11 @@
+use crate::fs::FileType;
 use crate::{config::clean::keymap::KeyMapping, key_command::Command};
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub enum CommandKeybind {
     SimpleKeybind {
-        commands: Vec<Command>,
+        commands: HashMap<Option<FileType>, Vec<Command>>,
         description: Option<String>,
     },
     CompositeKeybind(KeyMapping),
@@ -20,8 +22,13 @@ impl std::fmt::Display for CommandKeybind {
                 commands,
                 description: None,
             } => {
-                for cmd in commands {
-                    write!(f, "{}, ", cmd)?;
+                for (filetype, cmd) in commands {
+                    let filetype = match filetype {
+                        None => "",
+                        Some(FileType::Directory) => " [Directory]",
+                        Some(FileType::File) => " [File]",
+                    };
+                    write!(f, "{}{}, ", cmd[0], filetype)?;
                 }
                 Ok(())
             }

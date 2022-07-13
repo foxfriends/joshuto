@@ -7,6 +7,7 @@ use termion::event::Event;
 use crate::config::raw::keymap::{AppKeyMappingRaw, CommandKeymap};
 use crate::config::{parse_config_or_default, TomlConfigFile};
 use crate::error::AppResult;
+use crate::fs::FileType;
 use crate::key_command::{Command, CommandKeybind};
 use crate::traits::ToString;
 use crate::util::keyparse::str_to_event;
@@ -87,9 +88,13 @@ fn command_keymaps_vec_to_map(keymaps: &[CommandKeymap]) -> HashMap<Event, Comma
         }
 
         let command_description = keymap.description.to_owned();
-        if let Err(err) =
-            insert_keycommand(&mut hashmap, commands, command_description, &key_events)
-        {
+        if let Err(err) = insert_keycommand(
+            &mut hashmap,
+            commands,
+            keymap.filetype,
+            command_description,
+            &key_events,
+        ) {
             match err {
                 KeymapError::Conflict => {
                     let events_str: Vec<String> =
@@ -128,7 +133,8 @@ impl std::default::Default for AppKeyMapping {
 
 fn insert_keycommand(
     keymap: &mut KeyMapping,
-    commands: Vec<Command>,
+    keycommands: Vec<Command>,
+    filetype: Option<FileType>,
     description: Option<String>,
     events: &[Event],
 ) -> Result<(), KeymapError> {
@@ -140,11 +146,23 @@ fn insert_keycommand(
     let event = events[0].clone();
     if num_events == 1 {
         match keymap.entry(event) {
-            Entry::Occupied(_) => return Err(KeymapError::Conflict),
-            Entry::Vacant(entry) => entry.insert(CommandKeybind::SimpleKeybind {
-                commands,
-                description,
-            }),
+            Entry::Occupied(mut keybind) => match keybind.get_mut() {
+                CommandKeybind::SimpleKeybind { commands, .. } => match commands.entry(filetype) {
+                    Entry::Occupied(..) => return Err(KeymapError::Conflict),
+                    Entry::Vacant(entry) => {
+                        entry.insert(keycommands);
+                    }
+                },
+                _ => return Err(KeymapError::Conflict),
+            },
+            Entry::Vacant(entry) => {
+                let mut commands = HashMap::new();
+                commands.insert(filetype, keycommands);
+                entry.insert(CommandKeybind::SimpleKeybind {
+                    commands,
+                    description,
+                });
+            }
         };
         return Ok(());
     }
@@ -152,13 +170,19 @@ fn insert_keycommand(
     match keymap.entry(event) {
         Entry::Occupied(mut entry) => match entry.get_mut() {
             CommandKeybind::CompositeKeybind(ref mut m) => {
-                insert_keycommand(m, commands, description, &events[1..])
+                insert_keycommand(m, keycommands, filetype, description, &events[1..])
             }
             _ => Err(KeymapError::Conflict),
         },
         Entry::Vacant(entry) => {
             let mut new_map = KeyMapping::new();
-            let result = insert_keycommand(&mut new_map, commands, description, &events[1..]);
+            let result = insert_keycommand(
+                &mut new_map,
+                keycommands,
+                filetype,
+                description,
+                &events[1..],
+            );
             if result.is_ok() {
                 let composite_command = CommandKeybind::CompositeKeybind(new_map);
                 entry.insert(composite_command);

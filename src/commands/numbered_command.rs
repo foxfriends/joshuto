@@ -53,9 +53,28 @@ pub fn numbered_command(
                     }
                     key => match keymap.default_view.get(&key) {
                         Some(CommandKeybind::SimpleKeybind { commands, .. }) => {
-                            for command in commands {
-                                let _ =
-                                    command.numbered_execute(num_prefix, context, backend, keymap);
+                            let commands = context
+                                .tab_context_ref()
+                                .curr_tab_ref()
+                                .curr_list_ref()
+                                .and_then(|s| s.curr_entry_ref())
+                                .map(|entry| entry.metadata.file_type())
+                                .and_then(|file_type| commands.get(&Some(*file_type)))
+                                .or_else(|| commands.get(&None));
+                            match commands {
+                                Some(commands) => {
+                                    for command in commands {
+                                        let _ = command
+                                            .numbered_execute(num_prefix, context, backend, keymap);
+                                    }
+                                }
+                                _ => {
+                                    return Err(AppError::new(
+                                        AppErrorKind::UnrecognizedCommand,
+                                        "Command cannot be prefixed by a number or does not exist"
+                                            .to_string(),
+                                    ))
+                                }
                             }
                         }
                         _ => {

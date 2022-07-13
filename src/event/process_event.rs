@@ -41,13 +41,19 @@ pub fn poll_event_until_simple_keybind<'a>(
                     match event {
                         Event::Key(Key::Esc) => return None,
                         event => match keymap.get(&event) {
-                            Some(CommandKeybind::SimpleKeybind { commands, .. }) => {
-                                return Some(commands);
-                            }
+                            None => return None,
                             Some(CommandKeybind::CompositeKeybind(m)) => {
                                 keymap = m;
                             }
-                            None => return None,
+                            Some(CommandKeybind::SimpleKeybind { commands, .. }) => {
+                                let filetype = context
+                                    .tab_context_ref()
+                                    .curr_tab_ref()
+                                    .curr_list_ref()
+                                    .and_then(|s| s.curr_entry_ref())
+                                    .map(|entry| *entry.metadata.file_type());
+                                return commands.get(&filetype).or_else(|| commands.get(&None));
+                            }
                         },
                     }
                     context.flush_event();

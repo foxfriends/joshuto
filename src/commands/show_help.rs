@@ -51,24 +51,26 @@ pub fn help_loop(
                             if let Some(CommandKeybind::SimpleKeybind { commands, .. }) =
                                 keymap_t.help_view.get(&event)
                             {
-                                for command in commands {
-                                    match command {
-                                        Command::CursorMoveUp { .. } => {
-                                            move_offset(&mut offset, -1)
+                                if let Some(commands) = commands.get(&None) {
+                                    for command in commands {
+                                        match command {
+                                            Command::CursorMoveUp { .. } => {
+                                                move_offset(&mut offset, -1)
+                                            }
+                                            Command::CursorMoveDown { .. } => {
+                                                move_offset(&mut offset, 1)
+                                            }
+                                            Command::CursorMoveHome => offset = 0,
+                                            Command::CursorMoveEnd => offset = 255,
+                                            Command::CursorMovePageUp(_) => {
+                                                move_offset(&mut offset, -10)
+                                            }
+                                            Command::CursorMovePageDown(_) => {
+                                                move_offset(&mut offset, 10)
+                                            }
+                                            Command::CloseTab | Command::Help => break,
+                                            _ => (),
                                         }
-                                        Command::CursorMoveDown { .. } => {
-                                            move_offset(&mut offset, 1)
-                                        }
-                                        Command::CursorMoveHome => offset = 0,
-                                        Command::CursorMoveEnd => offset = 255,
-                                        Command::CursorMovePageUp(_) => {
-                                            move_offset(&mut offset, -10)
-                                        }
-                                        Command::CursorMovePageDown(_) => {
-                                            move_offset(&mut offset, 10)
-                                        }
-                                        Command::CloseTab | Command::Help => break,
-                                        _ => (),
                                     }
                                 }
                             }
