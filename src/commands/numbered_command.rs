@@ -76,6 +76,7 @@ pub fn numbered_command(
                                     ))
                                 }
                             }
+                            return Ok(());
                         }
                         _ => {
                             return Err(AppError::new(

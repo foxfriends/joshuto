@@ -22,7 +22,7 @@ fn str_to_color(s: &str) -> style::Color {
         "light_magenta" => style::Color::LightMagenta,
         "light_cyan" => style::Color::LightCyan,
         "white" => style::Color::White,
-        "reset" => style::Color::Reset,
+        "reset" | "" => style::Color::Reset,
         s if s.starts_with('#') => {
             let rgb = match Rgb::from_hex_str(s) {
                 Ok(s) => s,
@@ -33,7 +33,6 @@ fn str_to_color(s: &str) -> style::Color {
             let b = rgb.get_blue() as u8;
             style::Color::Rgb(r, g, b)
         }
-        s if s.is_empty() => style::Color::Reset,
         s => match s.parse::<Rgb>() {
             Ok(rgb) => {
                 let r = rgb.get_red() as u8;
@@ -98,6 +97,8 @@ pub struct AppStyleRaw {
     #[serde(default)]
     pub bg: String,
     #[serde(default)]
+    pub prefix: String,
+    #[serde(default)]
     pub bold: bool,
     #[serde(default)]
     pub underline: bool,
@@ -121,7 +122,11 @@ impl AppStyleRaw {
             modifier.insert(style::Modifier::REVERSED);
         }
 
-        AppStyle::default().set_fg(fg).set_bg(bg).insert(modifier)
+        AppStyle::default()
+            .set_fg(fg)
+            .set_bg(bg)
+            .set_prefix(self.prefix.clone())
+            .insert(modifier)
     }
 
     pub fn str_to_color(s: &str) -> style::Color {
@@ -134,6 +139,7 @@ impl std::default::Default for AppStyleRaw {
         Self {
             bg: "".to_string(),
             fg: "".to_string(),
+            prefix: "".to_string(),
             bold: false,
             underline: false,
             invert: false,

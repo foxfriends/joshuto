@@ -25,7 +25,7 @@ pub fn fzf(
         CaseSensitivity::Smart => {}
     }
 
-    fzf_impl(backend, items, args)
+    fzf_impl(context, backend, items, args)
 }
 
 pub fn fzf_multi(
@@ -47,10 +47,15 @@ pub fn fzf_multi(
     }
 
     args.push("-m".to_owned());
-    fzf_impl(backend, items, args)
+    fzf_impl(context, backend, items, args)
 }
 
-fn fzf_impl(backend: &mut AppBackend, items: Vec<String>, args: Vec<String>) -> AppResult<String> {
+fn fzf_impl(
+    _context: &mut AppContext,
+    backend: &mut AppBackend,
+    items: Vec<String>,
+    args: Vec<String>,
+) -> AppResult<String> {
     backend.terminal_drop();
 
     let mut cmd = Command::new("fzf");

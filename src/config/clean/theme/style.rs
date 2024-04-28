@@ -8,6 +8,7 @@ const fn default_color() -> style::Color {
 pub struct AppStyle {
     pub fg: style::Color,
     pub bg: style::Color,
+    pub prefix: String,
     pub modifier: style::Modifier,
 }
 
@@ -18,6 +19,10 @@ impl AppStyle {
     }
     pub fn set_fg(mut self, fg: style::Color) -> Self {
         self.fg = fg;
+        self
+    }
+    pub fn set_prefix(mut self, prefix: String) -> Self {
+        self.prefix = prefix;
         self
     }
 
@@ -36,6 +41,7 @@ impl std::default::Default for AppStyle {
         Self {
             fg: default_color(),
             bg: default_color(),
+            prefix: String::new(),
             modifier: style::Modifier::empty(),
         }
     }

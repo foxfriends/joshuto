@@ -1,4 +1,4 @@
-use std::collections::hash_map::IterMut;
+use std::collections::hash_map::{Iter, IterMut};
 use std::collections::HashMap;
 
 use uuid::Uuid;
@@ -51,9 +51,13 @@ impl TabContext {
         let id = &self.tab_order[self.index];
         self.tabs.get_mut(id).unwrap()
     }
-    pub fn insert_tab(&mut self, id: Uuid, tab: JoshutoTab) {
+    pub fn insert_tab(&mut self, id: Uuid, tab: JoshutoTab, last: bool) {
         self.tabs.insert(id, tab);
-        self.tab_order.push(id);
+        if last {
+            self.tab_order.push(id);
+        } else {
+            self.tab_order.insert(self.index + 1, id);
+        }
     }
     pub fn remove_tab(&mut self, id: &Uuid) -> Option<JoshutoTab> {
         let tab = self.tabs.remove(id);
@@ -66,6 +70,9 @@ impl TabContext {
         tab
     }
 
+    pub fn iter(&self) -> Iter<Uuid, JoshutoTab> {
+        self.tabs.iter()
+    }
     pub fn iter_mut(&mut self) -> IterMut<Uuid, JoshutoTab> {
         self.tabs.iter_mut()
     }

@@ -2,10 +2,6 @@
 
 [![MacOS build](https://github.com/kamiyaa/joshuto/actions/workflows/rust-macos-main.yml/badge.svg)](https://github.com/kamiyaa/joshuto/actions/workflows/rust-macos-main.yml?branch=main)
 
-<a href="https://discord.gg/2spSCCca4Q" target="_blank">
-  <img src="https://discordapp.com/api/guilds/1146271335803277394/widget.png?style=shield">
-</a>
-
 # joshuto
 
 [ranger](https://github.com/ranger/ranger)-like terminal file manager written in Rust.
@@ -110,14 +106,14 @@ sudo dnf install joshuto
 ##### Arch ([archlinuxcn](https://github.com/archlinuxcn/repo/))
 
 - [stable version (x86_64)](https://github.com/archlinuxcn/repo/tree/master/archlinuxcn/joshuto)
-- [stable version (aarch64)](https://github.com/archlinuxcn/repo/tree/master/alarm/joshuto)
+- [stable version (aarch64)](https://github.com/archlinuxcn/repo/tree/master/alarmcn/joshuto)
 
 ```
 [yay/paru] -S joshuto
 ```
 
 - [latest git version (x86_64)](https://github.com/archlinuxcn/repo/tree/master/archlinuxcn/joshuto-git)
-- [latest git version (aarch64)](https://github.com/archlinuxcn/repo/tree/master/alarm/joshuto-git)
+- [latest git version (aarch64)](https://github.com/archlinuxcn/repo/tree/master/alarmcn/joshuto-git)
 
 ```
 [yay/paru] -S joshuto-git

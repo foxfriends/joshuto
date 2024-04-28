@@ -3,6 +3,8 @@ use std::path;
 use crate::commands::case_sensitivity::SetType;
 use crate::commands::quit::QuitAction;
 use crate::commands::select::SelectOption;
+use crate::commands::stdout::PostProcessor;
+use crate::commands::sub_process::SubprocessCallMode;
 use crate::config::clean::app::display::line_mode::LineMode;
 use crate::config::clean::app::display::line_number::LineNumberStyle;
 use crate::config::clean::app::display::new_tab::NewTabMode;
@@ -137,7 +139,7 @@ pub enum Command {
     SetMode,
     SubProcess {
         words: Vec<String>,
-        spawn: bool,
+        mode: SubprocessCallMode,
     },
     ShowTasks,
 
@@ -151,7 +153,10 @@ pub enum Command {
         initial: char,
     },
 
-    Sort(SortType),
+    Sort {
+        sort_type: SortType,
+        reverse: Option<bool>,
+    },
     SortReverse,
 
     FilterGlob {
@@ -166,6 +171,7 @@ pub enum Command {
 
     NewTab {
         mode: NewTabMode,
+        last: bool,
     },
     CloseTab,
     TabSwitch {
@@ -181,8 +187,11 @@ pub enum Command {
     SelectFzf {
         options: SelectOption,
     },
+    StdOutPostProcess {
+        processor: PostProcessor,
+    },
     Zoxide(String),
-    ZoxideInteractive,
+    ZoxideInteractive(String),
 
     CustomSearch(Vec<String>),
     CustomSearchInteractive(Vec<String>),

@@ -1,5 +1,6 @@
 use super::constants::*;
 use super::{AppCommand, Command};
+use crate::commands::sub_process::SubprocessCallMode;
 
 impl AppCommand for Command {
     fn command(&self) -> &'static str {
@@ -78,15 +79,26 @@ impl AppCommand for Command {
             Self::Flat { .. } => CMD_FLAT,
             Self::NumberedCommand { .. } => CMD_NUMBERED_COMMAND,
 
-            Self::Sort(_) => CMD_SORT,
+            Self::Sort { .. } => CMD_SORT,
             Self::SortReverse => CMD_SORT_REVERSE,
 
             Self::FilterGlob { .. } => CMD_FILTER_GLOB,
             Self::FilterRegex { .. } => CMD_FILTER_REGEX,
             Self::FilterString { .. } => CMD_FILTER_STRING,
 
-            Self::SubProcess { spawn: false, .. } => CMD_SUBPROCESS_FOREGROUND,
-            Self::SubProcess { spawn: true, .. } => CMD_SUBPROCESS_BACKGROUND,
+            Self::SubProcess {
+                mode: SubprocessCallMode::Interactive,
+                ..
+            } => CMD_SUBPROCESS_INTERACTIVE,
+            Self::SubProcess {
+                mode: SubprocessCallMode::Spawn,
+                ..
+            } => CMD_SUBPROCESS_SPAWN,
+            Self::SubProcess {
+                mode: SubprocessCallMode::Capture,
+                ..
+            } => CMD_SUBPROCESS_CAPTURE,
+            Self::StdOutPostProcess { .. } => CMD_STDOUT_POST_PROCESS,
             Self::SwitchLineNums(_) => CMD_SWITCH_LINE_NUMBERS,
             Self::SetLineMode(_) => CMD_SET_LINEMODE,
 
@@ -99,7 +111,7 @@ impl AppCommand for Command {
             Self::SubdirFzf => CMD_SUBDIR_FZF,
             Self::SelectFzf { .. } => CMD_SELECT_FZF,
             Self::Zoxide(_) => CMD_ZOXIDE,
-            Self::ZoxideInteractive => CMD_ZOXIDE_INTERACTIVE,
+            Self::ZoxideInteractive(_) => CMD_ZOXIDE_INTERACTIVE,
 
             Self::CustomSearch(_) => CMD_CUSTOM_SEARCH,
             Self::CustomSearchInteractive(_) => CMD_CUSTOM_SEARCH_INTERACTIVE,

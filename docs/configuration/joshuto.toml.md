@@ -5,6 +5,8 @@ This file is for general configurations.
 All options available and their default values:
 
 ```toml
+# Enables mouse support (true by default)
+mouse_support = true
 # This is for configuring how many items to reach before 'scrolling' the view
 scroll_offset = 6
 
@@ -13,6 +15,10 @@ xdg_open = false
 
 # Fork xdg_open so you can continue using joshuto with application open
 xdg_open_fork = false
+
+# If true, all file extensions checks will be case sensitive.
+# Applies to `[extension]` in `mimetype.toml` and `[ext]` in `theme.toml` and `icons.toml`
+case_insensitive_ext = false
 
 # Use system trash can instead of permanently removing files
 use_trash = true
@@ -29,6 +35,9 @@ focus_on_create = true
 
 # The maximum file size to show a preview for
 max_preview_size = 2097152 # 2MB
+
+# Update the zoxide database with every navigation type instead of only with the z command
+zoxide_update = false
 
 # Define custom commands (using shell) with parameters like %text, %s etc.
 custom_commands = [

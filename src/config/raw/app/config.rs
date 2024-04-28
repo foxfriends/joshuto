@@ -29,11 +29,17 @@ pub struct AppConfigRaw {
     #[serde(default)]
     pub xdg_open: bool,
     #[serde(default)]
+    pub case_insensitive_ext: bool,
+    #[serde(default)]
     pub xdg_open_fork: bool,
     #[serde(default = "default_true")]
     pub watch_files: bool,
     #[serde(default = "default_true")]
     pub focus_on_create: bool,
+    #[serde(default = "default_true")]
+    pub mouse_support: bool,
+    #[serde(default)]
+    pub zoxide_update: bool,
     #[serde(default)]
     pub cmd_aliases: HashMap<String, String>,
     #[serde(default, rename = "display")]

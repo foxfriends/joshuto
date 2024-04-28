@@ -3,6 +3,8 @@ use std::path;
 use crate::commands::case_sensitivity::SetType;
 use crate::commands::quit::QuitAction;
 use crate::commands::select::SelectOption;
+use crate::commands::stdout::PostProcessor;
+use crate::commands::sub_process::SubprocessCallMode;
 use crate::config::clean::app::display::line_mode::LineMode;
 use crate::config::clean::app::display::line_number::LineNumberStyle;
 use crate::config::clean::app::display::new_tab::NewTabMode;
@@ -111,8 +113,11 @@ impl std::str::FromStr for Command {
             Self::CustomSearchInteractive(arg.split(' ').map(|x| x.to_string()).collect())
         );
         simple_command_conversion_case!(command, CMD_SUBDIR_FZF, Self::SubdirFzf);
-        simple_command_conversion_case!(command, CMD_ZOXIDE, Self::Zoxide(arg.to_string()));
-        simple_command_conversion_case!(command, CMD_ZOXIDE_INTERACTIVE, Self::ZoxideInteractive);
+        simple_command_conversion_case!(
+            command,
+            CMD_ZOXIDE_INTERACTIVE,
+            Self::ZoxideInteractive(arg.to_string())
+        );
 
         if command == CMD_QUIT {
             match arg {
@@ -122,8 +127,20 @@ impl std::str::FromStr for Command {
                 _ => Ok(Self::Quit(QuitAction::Noop)),
             }
         } else if command == CMD_NEW_TAB {
+            let mut new_arg = arg.to_string();
+            let mut last = false;
+
+            for arg in arg.split_whitespace() {
+                if arg == "--last" {
+                    new_arg = new_arg.split("--last").collect();
+                    last = true;
+                    break;
+                }
+            }
+
             Ok(Self::NewTab {
-                mode: NewTabMode::from_str(arg),
+                mode: NewTabMode::from_str(&new_arg),
+                last,
             })
         } else if command == CMD_CHANGE_DIRECTORY {
             match arg {
@@ -470,11 +487,22 @@ impl std::str::FromStr for Command {
                     format!("{}: {}", arg, e),
                 )),
             }
-        } else if command == CMD_SUBPROCESS_FOREGROUND || command == CMD_SUBPROCESS_BACKGROUND {
+        } else if command == CMD_SUBPROCESS_INTERACTIVE
+            || command == CMD_SUBPROCESS_SPAWN
+            || command == CMD_SUBPROCESS_CAPTURE
+        {
             match shell_words::split(arg) {
                 Ok(s) if !s.is_empty() => Ok(Self::SubProcess {
                     words: s,
-                    spawn: command == "spawn",
+                    mode: match command {
+                        CMD_SUBPROCESS_CAPTURE => SubprocessCallMode::Capture,
+                        CMD_SUBPROCESS_SPAWN => SubprocessCallMode::Spawn,
+                        CMD_SUBPROCESS_INTERACTIVE => SubprocessCallMode::Interactive,
+                        c => Err(AppError::new(
+                                AppErrorKind::InternalError,
+                                format!("Joshuto internal error: command {} unexpected in sub-process handling", c),
+                            ))?
+                    }
                 }),
                 Ok(_) => Err(AppError::new(
                     AppErrorKind::InvalidParameters,
@@ -485,16 +513,39 @@ impl std::str::FromStr for Command {
                     format!("{}: {}", arg, e),
                 )),
             }
+        } else if command == CMD_STDOUT_POST_PROCESS {
+            if let Some(processor) = PostProcessor::from_str(arg) {
+                Ok(Self::StdOutPostProcess { processor })
+            } else {
+                Err(AppError::new(
+                    AppErrorKind::InvalidParameters,
+                    format!("{} is not a valid argument for stdout post-processing", arg),
+                ))
+            }
         } else if command == CMD_SORT {
             match arg {
                 "reverse" => Ok(Self::SortReverse),
-                arg => match SortType::from_str(arg) {
-                    Some(s) => Ok(Self::Sort(s)),
-                    None => Err(AppError::new(
-                        AppErrorKind::InvalidParameters,
-                        format!("{}: Unknown option '{}'", command, arg),
-                    )),
-                },
+                arg => {
+                    let (sort, reverse) = match arg.split_once(' ') {
+                        Some((s, "--reverse=true")) => (s, Some(true)),
+                        Some((s, "--reverse=false")) => (s, Some(false)),
+                        Some((_, opt)) => {
+                            return Err(AppError::new(
+                                AppErrorKind::InvalidParameters,
+                                format!("{}: Unknown option '{}'", command, opt),
+                            ))
+                        }
+                        None => (arg, None),
+                    };
+
+                    match SortType::from_str(sort) {
+                        Some(sort_type) => Ok(Self::Sort { sort_type, reverse }),
+                        None => Err(AppError::new(
+                            AppErrorKind::InvalidParameters,
+                            format!("{}: Unknown option '{}'", command, sort),
+                        )),
+                    }
+                }
             }
         } else if command == CMD_SET_LINEMODE {
             Ok(Self::SetLineMode(LineMode::from_string(arg)?))
@@ -554,6 +605,28 @@ impl std::str::FromStr for Command {
             Ok(Self::FilterString {
                 pattern: arg.to_string(),
             })
+        } else if command == CMD_ZOXIDE {
+            match arg {
+                "" => match HOME_DIR.as_ref() {
+                    Some(s) => Ok(Self::ChangeDirectory { path: s.clone() }),
+                    None => Err(AppError::new(
+                        AppErrorKind::EnvVarNotPresent,
+                        format!("{}: Cannot find home directory", command),
+                    )),
+                },
+                ".." => Ok(Self::ParentDirectory),
+                "-" => Ok(Self::PreviousDirectory),
+                arg => {
+                    let (head, tail) = match arg.find(' ') {
+                        Some(i) => (&arg[..i], &arg[i..]),
+                        None => (arg, ""),
+                    };
+                    let head = unix::expand_shell_string_cow(head);
+                    let mut args = String::from(head);
+                    args.push_str(tail);
+                    Ok(Self::Zoxide(args))
+                }
+            }
         } else {
             Err(AppError::new(
                 AppErrorKind::UnrecognizedCommand,

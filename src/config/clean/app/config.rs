@@ -2,9 +2,8 @@ use std::collections::HashMap;
 
 use crate::{
     config::{
-        parse_config_or_default,
         raw::app::{AppConfigRaw, CustomCommand},
-        TomlConfigFile,
+        ConfigType, TomlConfigFile,
     },
     error::AppResult,
 };
@@ -19,10 +18,13 @@ pub struct AppConfig {
     pub use_trash: bool,
     pub xdg_open: bool,
     pub xdg_open_fork: bool,
+    pub case_insensitive_ext: bool,
     pub watch_files: bool,
     pub custom_commands: Vec<CustomCommand>,
     pub focus_on_create: bool,
+    pub mouse_support: bool,
     pub cmd_aliases: HashMap<String, String>,
+    pub zoxide_update: bool,
     pub _display_options: DisplayOption,
     pub _preview_options: PreviewOption,
     pub _search_options: SearchOption,
@@ -71,8 +73,10 @@ impl std::default::Default for AppConfig {
 }
 
 impl TomlConfigFile for AppConfig {
-    fn get_config(file_name: &str) -> Self {
-        parse_config_or_default::<AppConfigRaw, AppConfig>(file_name)
+    type Raw = AppConfigRaw;
+
+    fn get_type() -> ConfigType {
+        ConfigType::App
     }
 }
 
@@ -82,9 +86,12 @@ impl From<AppConfigRaw> for AppConfig {
             use_trash: raw.use_trash,
             xdg_open: raw.xdg_open,
             xdg_open_fork: raw.xdg_open_fork,
+            case_insensitive_ext: raw.case_insensitive_ext,
             watch_files: raw.watch_files,
             cmd_aliases: raw.cmd_aliases,
             focus_on_create: raw.focus_on_create,
+            mouse_support: raw.mouse_support,
+            zoxide_update: raw.zoxide_update,
             _display_options: DisplayOption::from(raw.display_options),
             _preview_options: PreviewOption::from(raw.preview_options),
             _search_options: SearchOption::from(raw.search_options),

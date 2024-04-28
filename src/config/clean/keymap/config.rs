@@ -5,7 +5,7 @@ use std::str::FromStr;
 use termion::event::Event;
 
 use crate::config::raw::keymap::{AppKeyMappingRaw, CommandKeymap};
-use crate::config::{parse_config_or_default, TomlConfigFile};
+use crate::config::{ConfigType, TomlConfigFile};
 use crate::error::AppResult;
 use crate::fs::FileType;
 use crate::key_command::{Command, CommandKeybind};
@@ -118,8 +118,10 @@ impl From<AppKeyMappingRaw> for AppKeyMapping {
 }
 
 impl TomlConfigFile for AppKeyMapping {
-    fn get_config(file_name: &str) -> Self {
-        parse_config_or_default::<AppKeyMappingRaw, AppKeyMapping>(file_name)
+    type Raw = AppKeyMappingRaw;
+
+    fn get_type() -> ConfigType {
+        ConfigType::Keymap
     }
 }
 

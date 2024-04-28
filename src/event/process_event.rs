@@ -7,18 +7,19 @@ use signal_hook::consts::signal;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 use uuid::Uuid;
 
+use crate::commands::tab_ops;
 use crate::commands::{cursor_move, parent_cursor_move, reload};
 use crate::config::clean::keymap::AppKeyMapping;
 use crate::config::clean::keymap::KeyMapping;
 use crate::context::AppContext;
 use crate::error::AppResult;
 use crate::event::AppEvent;
+use crate::event::PreviewData;
 use crate::fs::JoshutoDirList;
-use crate::history::DirectoryHistory;
 use crate::io::FileOperationProgress;
 use crate::key_command::{AppExecute, Command, CommandKeybind};
 use crate::preview::preview_dir::PreviewDirState;
-use crate::preview::preview_file::{FilePreview, PreviewFileState};
+use crate::preview::preview_file::PreviewFileState;
 use crate::ui;
 use crate::ui::views::TuiCommandMenu;
 use crate::util::format;
@@ -70,7 +71,7 @@ pub fn process_noninteractive(event: AppEvent, context: &mut AppContext) {
         AppEvent::FileOperationProgress(res) => process_worker_progress(context, res),
         AppEvent::IoWorkerResult(res) => process_finished_worker(context, res),
         AppEvent::PreviewDir { id, path, res } => process_dir_preview(context, id, path, *res),
-        AppEvent::PreviewFile { path, res } => process_file_preview(context, path, *res),
+        AppEvent::PreviewFile { path, res } => process_file_preview(context, path, res),
         AppEvent::Signal(signal::SIGWINCH) => {}
         AppEvent::Filesystem(e) => process_filesystem_event(e, context),
         AppEvent::ChildProcessComplete(child_id) => {
@@ -99,23 +100,19 @@ pub fn process_worker_progress(context: &mut AppContext, res: FileOperationProgr
 pub fn process_finished_worker(context: &mut AppContext, res: AppResult<FileOperationProgress>) {
     let worker_context = context.worker_context_mut();
     let observer = worker_context.remove_worker().unwrap();
-    let options = context.config_ref().display_options_ref().clone();
-    for (_, tab) in context.tab_context_mut().iter_mut() {
-        let tab_options = tab.option_ref().clone();
-        if observer.dest_path().exists() {
-            let _ = tab
-                .history_mut()
-                .reload(observer.dest_path(), &options, &tab_options);
-        } else {
-            tab.history_mut().remove(observer.dest_path());
-        }
-        if observer.src_path().exists() {
-            let _ = tab
-                .history_mut()
-                .reload(observer.src_path(), &options, &tab_options);
-        } else {
-            tab.history_mut().remove(observer.src_path());
-        }
+
+    let observer_path = observer.dest_path();
+    if observer_path.exists() {
+        let _ = tab_ops::reload_all_tabs(context, observer_path);
+    } else {
+        tab_ops::remove_entry_from_all_tabs(context, observer_path);
+    }
+
+    let observer_path = observer.src_path();
+    if observer_path.exists() {
+        let _ = tab_ops::reload_all_tabs(context, observer_path);
+    } else {
+        tab_ops::remove_entry_from_all_tabs(context, observer_path);
     }
 
     observer.join();
@@ -179,33 +176,29 @@ pub fn process_dir_preview(
 pub fn process_file_preview(
     context: &mut AppContext,
     path: path::PathBuf,
-    res: io::Result<FilePreview>,
+    res: io::Result<PreviewData>,
 ) {
+    let preview_context = context.preview_context_mut();
     match res {
-        Ok(preview) => {
-            if preview.status.code().is_some() {
-                context
-                    .preview_context_mut()
-                    .previews_mut()
-                    .insert(path, PreviewFileState::Success { data: preview });
-            } else {
-                context.preview_context_mut().previews_mut().insert(
-                    path,
-                    PreviewFileState::Error {
-                        message: "Unknown error".to_string(),
-                    },
-                );
-            }
+        Ok(PreviewData::Script(output)) if output.status.code().is_some() => {
+            preview_context
+                .previews_mut()
+                .insert(path, PreviewFileState::Success(*output));
+        }
+        Ok(PreviewData::Script(_)) => {
+            preview_context
+                .previews_mut()
+                .insert(path, PreviewFileState::Error("status error".to_owned()));
+        }
+        Ok(PreviewData::Image(protocol)) => {
+            preview_context.set_image_preview(Some((path, protocol)));
         }
         Err(e) => {
-            context.preview_context_mut().previews_mut().insert(
-                path,
-                PreviewFileState::Error {
-                    message: e.to_string(),
-                },
-            );
+            preview_context
+                .previews_mut()
+                .insert(path, PreviewFileState::Error(e.to_string()));
         }
-    }
+    };
 }
 
 pub fn process_unsupported(

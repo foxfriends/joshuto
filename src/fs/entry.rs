@@ -1,18 +1,12 @@
 use std::{fs, io, path};
 
-use crate::{
-    config::clean::app::display::DisplayOption,
-    fs::{FileType, JoshutoMetadata},
-};
-
-#[cfg(feature = "devicons")]
-use crate::ICONS_T;
+use crate::{config::clean::app::display::DisplayOption, fs::JoshutoMetadata};
 
 #[derive(Clone, Debug)]
 pub struct JoshutoDirEntry {
-    name: String,
-    label: String,
-    path: path::PathBuf,
+    pub name: String,
+    pub ext: Option<String>,
+    pub path: path::PathBuf,
     pub metadata: JoshutoMetadata,
     /// Directly selected by the user, _not_ by a current visual mode selection
     permanent_selected: bool,
@@ -36,6 +30,12 @@ impl JoshutoDirEntry {
             .to_string_lossy()
             .to_string();
 
+        let ext = direntry
+            .path()
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_string());
+
         let mut metadata = JoshutoMetadata::from(&path)?;
 
         if options.automatically_count_files() && metadata.file_type().is_dir() {
@@ -44,19 +44,9 @@ impl JoshutoDirEntry {
             }
         }
 
-        #[cfg(feature = "devicons")]
-        let label = if options.show_icons() {
-            create_icon_label(name.as_str(), &metadata)
-        } else {
-            name.clone()
-        };
-
-        #[cfg(not(feature = "devicons"))]
-        let label = name.clone();
-
         Ok(Self {
             name,
-            label,
+            ext,
             path,
             metadata,
             permanent_selected: false,
@@ -69,8 +59,8 @@ impl JoshutoDirEntry {
         self.name.as_str()
     }
 
-    pub fn label(&self) -> &str {
-        self.label.as_str()
+    pub fn ext(&self) -> Option<&str> {
+        self.ext.as_deref()
     }
 
     pub fn file_path(&self) -> &path::Path {
@@ -99,14 +89,6 @@ impl JoshutoDirEntry {
 
     pub fn set_visual_mode_selected(&mut self, visual_mode_selected: bool) {
         self.visual_mode_selected = visual_mode_selected;
-    }
-
-    pub fn get_ext(&self) -> &str {
-        let fname = self.file_name();
-        match fname.rfind('.') {
-            Some(pos) => &fname[pos..],
-            None => "",
-        }
     }
 }
 
@@ -139,33 +121,6 @@ impl std::cmp::Ord for JoshutoDirEntry {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.file_path().cmp(other.file_path())
     }
-}
-
-#[cfg(feature = "devicons")]
-fn create_icon_label(name: &str, metadata: &JoshutoMetadata) -> String {
-    let label = {
-        let icon = match metadata.file_type() {
-            FileType::Directory => ICONS_T
-                .directory_exact
-                .get(name)
-                .cloned()
-                .unwrap_or(ICONS_T.default_dir.clone()),
-            _ => ICONS_T
-                .file_exact
-                .get(name)
-                .cloned()
-                .unwrap_or(match name.rsplit_once('.') {
-                    Some((_, ext)) => ICONS_T
-                        .ext
-                        .get(ext)
-                        .unwrap_or(&ICONS_T.default_file)
-                        .to_string(),
-                    None => ICONS_T.default_file.clone(),
-                }),
-        };
-        format!("{} {}", icon, name)
-    };
-    label
 }
 
 fn get_directory_size(path: &path::Path) -> io::Result<usize> {
